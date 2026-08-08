@@ -14,6 +14,7 @@ import com.newoether.agora.model.Participant
 import com.newoether.agora.model.RunStatus
 import com.newoether.agora.sandbox.SandboxManagerFactory
 import com.newoether.agora.util.DebugLog
+import com.newoether.agora.viewmodel.ContextCompactor
 import com.newoether.agora.viewmodel.ConversationUiState
 import com.newoether.agora.viewmodel.ConversationTitleGenerator
 import com.newoether.agora.viewmodel.GenerationCallbacks
@@ -113,6 +114,12 @@ class TaskExecutionEngine(
         context = appContext,
         sandboxFactory = sandboxFactory,
         additionalToolProviders = listOf(mcpToolProvider),
+        settingsRepository = settings,
+        contextCompactor = ContextCompactor(
+            settings = settings,
+            providers = providerRegistry,
+            conversations = convRepo,
+        ),
     ).also {
         // Foreground Task/Loop executions share the exact same prompt and session trust state as
         // Chat. ShellConfirmationController itself fails fast when no Activity is visible.

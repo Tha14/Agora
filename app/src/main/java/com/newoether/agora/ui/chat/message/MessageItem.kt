@@ -48,6 +48,7 @@ internal fun MessageItem(
     isEditing: Boolean = false,
     isSwitching: Boolean = false,
     isInContext: Boolean = false,
+    isCompacted: Boolean = false,
     modelAliases: StableModelAliases = StableModelAliases(),
     visualizeContextRollout: Boolean = false,
     toolCallDisplayMode: String = ToolCallDisplayModes.DEFAULT,
@@ -194,7 +195,7 @@ internal fun MessageItem(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = alignment,
             ) {
-                val contextAlpha = if (visualizeContextRollout && !isInContext) {
+                val contextAlpha = if (isCompacted || (visualizeContextRollout && !isInContext)) {
                     Modifier.alpha(0.38f)
                 } else {
                     Modifier

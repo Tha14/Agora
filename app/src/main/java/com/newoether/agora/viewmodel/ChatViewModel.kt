@@ -16,6 +16,7 @@ import com.newoether.agora.api.openai.*
 import com.newoether.agora.data.AutoBackupManager
 import com.newoether.agora.data.BuiltInPrompts
 import com.newoether.agora.data.ClaudeChatImporter
+import com.newoether.agora.data.CompactionMarker
 import com.newoether.agora.data.ConversationSettings
 import com.newoether.agora.data.DataExporter
 import com.newoether.agora.data.DataImporter
@@ -394,12 +395,20 @@ class ChatViewModel(
             context = appContext,
             sandboxFactory = sandboxFactory,
             additionalToolProviders = listOf(automationToolProvider, mcpToolProvider),
+            settingsRepository = settings,
+            contextCompactor = contextCompactor,
         ).also { gm ->
             // Gate lives in RagManager.indexMessageForRag (autoCacheEnabled + active model).
             gm.onMessagePersisted = { messageId, text -> ragManager.indexMessageForRag(messageId, text) }
             gm.onConfirmShellCommand = { server, summary -> shellConfirmation.confirm(server, summary) }
         }
     }
+
+    val contextCompactor = ContextCompactor(
+        settings = settings,
+        providers = providerRegistry,
+        conversations = convRepo,
+    )
 
     val sandboxManager: SandboxManager? by lazy {
         sandboxFactory?.create()
@@ -608,8 +617,13 @@ class ChatViewModel(
     }.distinctUntilChanged()
     .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val totalTokens: StateFlow<Int> = renderStore.snapshot.map { snapshot ->
-        snapshot.allMessages.sumOf { it.tokenCount }
+    val totalTokens: StateFlow<Int> = kotlinx.coroutines.flow.combine(
+        renderStore.snapshot,
+        _currentConversationId,
+        contextCompactor.markers,
+    ) { snapshot, activeId, _ ->
+        val messageTokens = snapshot.allMessages.sumOf { it.tokenCount }
+        messageTokens + (activeId?.let { contextCompactor.summaryTokens(it) } ?: 0)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     private val _isLoading = MutableStateFlow(false)
@@ -1298,10 +1312,38 @@ class ChatViewModel(
             conversationExecutionCoordinator.withConversationLock(id) {
                 convRepo.deleteConversation(id)
             }
+            contextCompactor.revertCompaction(id)
             generationRegistry.remove(id)
             if (_currentConversationId.value == id) {
                 withContext(Dispatchers.Main) { createNewChat() }
             }
+        }
+    }
+
+    // ── Context Compaction ─────────────────────────────────────
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val activeCompactionMarker: StateFlow<CompactionMarker?> = _currentConversationId
+        .flatMapLatest { id ->
+            if (id == null) kotlinx.coroutines.flow.flowOf(null)
+            else {
+                contextCompactor.markers.map { ids -> ids[id] }
+            }
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
+
+    fun compactNow(revisionId: String = "") {
+        val conversationId = _currentConversationId.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val resolved = settings.resolveCompactionConfig(conversationId)
+            val budget = resolveCompactionContextBudget(resolved, currentActiveModel.value)
+            contextCompactor.compactNow(conversationId, resolved, budget)
+        }
+    }
+
+    fun revertCompaction() {
+        val conversationId = _currentConversationId.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            contextCompactor.revertCompaction(conversationId)
         }
     }
 

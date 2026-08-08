@@ -186,6 +186,15 @@ internal fun ChatAdvancedSettingsDialog(
     val defaultTopP by viewModel.settings.defaultTopP.collectAsState()
     val defaultFrequencyPenalty by viewModel.settings.defaultFrequencyPenalty.collectAsState()
     val defaultPresencePenalty by viewModel.settings.defaultPresencePenalty.collectAsState()
+    val defaultCompactionEnabled by viewModel.settings.compactionEnabled.collectAsState()
+    val defaultCompactionStrategy by viewModel.settings.compactionStrategy.collectAsState()
+    val defaultCompactionMessageCount by viewModel.settings.compactionMessageCount.collectAsState()
+    val defaultCompactionTokenPercent by viewModel.settings.compactionTokenPercent.collectAsState()
+    val defaultCompactionTokenSize by viewModel.settings.compactionTokenSize.collectAsState()
+    val defaultCompactionSummaryMode by viewModel.settings.compactionSummaryMode.collectAsState()
+    val defaultCompactionLlmModel by viewModel.settings.compactionLlmModel.collectAsState()
+    val enabledModels by viewModel.settings.enabledModels.collectAsState()
+    val modelAliases by viewModel.settings.modelAliases.collectAsState()
 
     val currentId = currentConversationId
     val overrides = if (currentId != null) conversationSettings[currentId] ?: ConversationSettings()
@@ -196,11 +205,20 @@ internal fun ChatAdvancedSettingsDialog(
         maxTokens = defaultMaxTokens,
         topP = defaultTopP,
         frequencyPenalty = defaultFrequencyPenalty,
-        presencePenalty = defaultPresencePenalty
+        presencePenalty = defaultPresencePenalty,
+        compactEnabled = defaultCompactionEnabled,
+        compactStrategy = defaultCompactionStrategy,
+        compactMessageCount = defaultCompactionMessageCount,
+        compactTokenPercent = defaultCompactionTokenPercent,
+        compactTokenSize = defaultCompactionTokenSize,
+        compactSummaryMode = defaultCompactionSummaryMode,
+        compactLlmModel = defaultCompactionLlmModel
     )
     AdvancedSettingsDialog(
         overrides = overrides,
         globalDefaults = defaults,
+        enabledModels = enabledModels,
+        modelAliases = modelAliases,
         onSave = { settings ->
             if (currentId != null) {
                 viewModel.settings.setConversationSettings(currentId, settings)

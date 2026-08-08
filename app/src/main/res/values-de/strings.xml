@@ -352,6 +352,37 @@
     <string name="thinking_budget_tokens">%1$d Tokens</string>
     <string name="thinking_budget_custom">Benutzerdefiniert</string>
     <string name="thinking_budget_note">Das Nachdenkbudget nutzt versteckte Ausgabe-Tokens vor der sichtbaren Antwort. Höhere Werte können schwierige Aufgaben verbessern, sind aber möglicherweise langsamer und teurer.</string>
+
+    <!-- Context Compaction -->
+    <string name="compaction_title">Kontext-Kompression</string>
+    <string name="compaction_enabled">Kontext automatisch komprimieren</string>
+    <string name="compaction_enabled_desc">Ältere Nachrichten automatisch zusammenfassen, wenn die Konversation das Kontextfenster übersteigt</string>
+    <string name="compaction_strategy_label">Komprimieren, wenn</string>
+    <string name="compaction_strategy_messages_short">Nachrichten</string>
+    <string name="compaction_strategy_messages_value">Wenn die Nachrichtenzahl überschritten wird</string>
+    <string name="compaction_strategy_percent_short">Prozent</string>
+    <string name="compaction_strategy_percent_value">Wenn der Kontext-Nutzungsgrad einen Prozentwert überschreitet</string>
+    <string name="compaction_strategy_tokens_short">Tokens</string>
+    <string name="compaction_strategy_tokens_value">Wenn die Tokenzahl überschritten wird</string>
+    <string name="compaction_keep_recent">Letzte Nachrichten behalten</string>
+    <string name="compaction_summary_mode">Zusammenfassungsmodus</string>
+    <string name="compaction_summary_llm">LLM</string>
+    <string name="compaction_summary_deterministic">Text</string>
+    <string name="compaction_model">Kompressionsmodell</string>
+    <string name="compaction_model_current">Aktuelles Modell verwenden</string>
+    <string name="compaction_model_current_desc">Mit demselben Modell wie der Chat zusammenfassen</string>
+    <string name="compaction_message">Komprimierungsnachricht</string>
+    <string name="compaction_message_desc">Benutzerdefinierte Anweisungen, die beim Zusammenfassen mit einem LLM vor das Transkript gestellt werden. Leer lassen, um die Standardvorlage zu verwenden.</string>
+    <string name="compaction_message_default">Standard-Zusammenfassungsvorlage verwenden</string>
+    <string name="compaction_limit_mode">Kontextlimit</string>
+    <string name="compaction_limit_auto">Auto</string>
+    <string name="compaction_limit_manual">Manuell</string>
+    <string name="compaction_limit_manual_tokens">Manuelle Kontext-Tokens</string>
+    <string name="compaction_limit_manual_tokens_desc">Obergrenze für übertragenen Kontext</string>
+    <string name="compaction_banner_title">Kontext komprimiert</string>
+    <string name="compaction_banner_body">%1$d frühere Nachrichten zusammengefasst, um das Kontextfenster übersichtlich zu halten.</string>
+    <string name="compaction_banner_review_hint">Scroll to a previous point of the conversation to review and revert changes.</string>
+    <string name="compaction_revert_action">Rückgängig</string>
     <string name="advanced_settings">Erweitert</string>
     <string name="advanced_generation_title">Erweiterte Einstellungen</string>
     <string name="advanced_per_conversation">Überschreibungen pro Unterhaltung</string>

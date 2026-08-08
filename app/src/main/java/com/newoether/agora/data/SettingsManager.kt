@@ -106,7 +106,17 @@ data class ConversationSettings(
     val openAiServiceTierEnabled: Boolean? = null,
     val openAiServiceTier: String? = null,
     val webSearchEnabled: Boolean? = null,
-    val shellEnabled: Boolean? = null
+    val shellEnabled: Boolean? = null,
+    val compactEnabled: Boolean? = null,
+    val compactStrategy: String? = null,
+    val compactMessageCount: Int? = null,
+    val compactTokenPercent: Int? = null,
+    val compactTokenSize: Int? = null,
+    val compactSummaryMode: String? = null,
+    val compactLlmModel: String? = null,
+    val compactKeepRecent: Int? = null,
+    val compactLimitMode: String? = null,
+    val manualContextTokens: Int? = null
 ) {
     fun isAllNull() = contextWindow == null && temperature == null && maxTokens == null && topP == null
         && frequencyPenalty == null && presencePenalty == null
@@ -114,6 +124,50 @@ data class ConversationSettings(
         && thinkingLevel == null && thinkingBudgetEnabled == null && thinkingBudgetTokens == null
         && openAiServiceTierEnabled == null && openAiServiceTier == null
         && webSearchEnabled == null && shellEnabled == null
+        && compactEnabled == null && compactStrategy == null && compactMessageCount == null
+        && compactTokenPercent == null && compactTokenSize == null && compactSummaryMode == null
+        && compactLlmModel == null && compactKeepRecent == null && compactLimitMode == null
+        && manualContextTokens == null
+}
+
+/**
+ * Durable context-compaction record for a single conversation. Persisted (as a JSON map keyed by
+ * conversation id) in DataStore, never Room, so compaction never requires a schema migration. The
+ * pre-boundary messages stay in the database untouched — the marker just drives how the generator
+ * assembles requests.
+ */
+@Serializable
+data class CompactionMarker(
+    val conversationId: String,
+    /** First message that is still sent verbatim; everything before it is folded. */
+    val boundaryMessageId: String,
+    val summaryText: String,
+    val strategyUsed: String,
+    val summaryMode: String,
+    /** Effective token context limit used when this marker was created. */
+    val contextLimit: Int,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/**
+ * Effective, fully-resolved compaction configuration for a conversation — the global defaults with
+ * any per-conversation [ConversationSettings] overrides already layered in. Built by
+ * `SettingsRepository.resolveCompactionConfig`.
+ */
+data class CompactionConfig(
+    val enabled: Boolean,
+    val strategy: String,
+    val messageCount: Int,
+    val tokenPercent: Int,
+    val tokenSize: Int,
+    val summaryMode: String,
+    val llmModel: String?,
+    val keepRecent: Int,
+    val limitMode: String,
+    val manualContextTokens: Int,
+) {
+    fun effectiveTokenSize(context: Int): Int =
+        if (tokenSize > 0) tokenSize else context * tokenPercent.coerceIn(1, 100) / 100
 }
 
 class SettingsManager(private val context: Context) {
@@ -233,6 +287,26 @@ class SettingsManager(private val context: Context) {
         val AUTO_DELETE_PERIOD_HOURS = intPreferencesKey("auto_delete_period_hours")
         val LAST_BACKUP_TIMESTAMP = longPreferencesKey("last_backup_timestamp")
         val LAST_MODELS_FETCH_FINGERPRINT = stringPreferencesKey("last_models_fetch_fingerprint")
+        // ── Context Compaction ──────────────────────────────────
+        val COMPACTION_ENABLED = booleanPreferencesKey("compaction_enabled")
+        val COMPACTION_STRATEGY = stringPreferencesKey("compaction_strategy")
+        val COMPACTION_MESSAGE_COUNT = intPreferencesKey("compaction_message_count")
+        val COMPACTION_TOKEN_PERCENT = intPreferencesKey("compaction_token_percent")
+        val COMPACTION_TOKEN_SIZE = intPreferencesKey("compaction_token_size")
+        val COMPACTION_SUMMARY_MODE = stringPreferencesKey("compaction_summary_mode")
+        val COMPACTION_LLM_MODEL = stringPreferencesKey("compaction_llm_model")
+        val COMPACTION_KEEP_RECENT = intPreferencesKey("compaction_keep_recent")
+        val COMPACTION_LIMIT_MODE = stringPreferencesKey("compaction_limit_mode")
+        val COMPACTION_SUMMARY_INSTRUCTIONS = stringPreferencesKey("compaction_summary_instructions")
+        val MANUAL_CONTEXT_TOKENS = intPreferencesKey("manual_context_tokens")
+        val COMPACTION_STATE_JSON = stringPreferencesKey("compaction_state_json")
+        const val COMPACTION_STRATEGY_MESSAGE_COUNT = "message_count"
+        const val COMPACTION_STRATEGY_TOKEN_PERCENT = "token_percent"
+        const val COMPACTION_STRATEGY_TOKEN_SIZE = "token_size"
+        const val COMPACTION_SUMMARY_DETERMINISTIC = "deterministic"
+        const val COMPACTION_SUMMARY_LLM = "llm"
+        const val COMPACTION_LIMIT_AUTO = "auto"
+        const val COMPACTION_LIMIT_MANUAL = "manual"
     }
 
     val selectedModel: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL] ?: Constants.EXAMPLE_MODEL_ID }
@@ -319,6 +393,28 @@ class SettingsManager(private val context: Context) {
     val imageTranscriptionBatchSize: Flow<Int> = context.dataStore.data.map { it[IMAGE_TRANSCRIPTION_BATCH_SIZE] ?: 3 }
     val imageTranscriptionPrompt: Flow<String> = context.dataStore.data.map { pref ->
         pref[IMAGE_TRANSCRIPTION_PROMPT]?.takeIf { it.isNotBlank() } ?: BuiltInPrompts.IMAGE_TRANSCRIPTION_USER
+    }
+
+    // ── Context Compaction ────────────────────────────────────
+    val compactionEnabled: Flow<Boolean> = context.dataStore.data.map { it[COMPACTION_ENABLED] ?: false }
+    val compactionStrategy: Flow<String> = context.dataStore.data.map { it[COMPACTION_STRATEGY] ?: "token_percent" }
+    val compactionMessageCount: Flow<Int> = context.dataStore.data.map { it[COMPACTION_MESSAGE_COUNT] ?: 40 }
+    val compactionTokenPercent: Flow<Int> = context.dataStore.data.map { it[COMPACTION_TOKEN_PERCENT] ?: 80 }
+    val compactionTokenSize: Flow<Int> = context.dataStore.data.map { it[COMPACTION_TOKEN_SIZE] ?: 0 }
+    val compactionSummaryMode: Flow<String> = context.dataStore.data.map { it[COMPACTION_SUMMARY_MODE] ?: "deterministic" }
+    val compactionLlmModel: Flow<String?> = context.dataStore.data.map { it[COMPACTION_LLM_MODEL] }
+    val compactionKeepRecent: Flow<Int> = context.dataStore.data.map { it[COMPACTION_KEEP_RECENT] ?: 4 }
+    val compactionLimitMode: Flow<String> = context.dataStore.data.map { it[COMPACTION_LIMIT_MODE] ?: "auto" }
+    val compactionSummaryInstructions: Flow<String> = context.dataStore.data.map { it[COMPACTION_SUMMARY_INSTRUCTIONS].orEmpty() }
+    val manualContextTokens: Flow<Int> = context.dataStore.data.map { it[MANUAL_CONTEXT_TOKENS] ?: 4096 }
+    val compactionState: Flow<Map<String, CompactionMarker>> = context.dataStore.data.map { pref ->
+        val jsonStr = pref[COMPACTION_STATE_JSON] ?: "{}"
+        try {
+            json.decodeFromString<Map<String, CompactionMarker>>(jsonStr)
+        } catch (e: Exception) {
+            DebugLog.e("SettingsManager", "Failed to decode compactionState", e)
+            emptyMap()
+        }
     }
 
     val accessPastConversations: Flow<Boolean> = context.dataStore.data.map { it[ACCESS_PAST_CONVERSATIONS] ?: true }
@@ -1217,6 +1313,17 @@ class SettingsManager(private val context: Context) {
             prefs.remove(DEFAULT_TOP_P)
             prefs.remove(DEFAULT_FREQUENCY_PENALTY)
             prefs.remove(DEFAULT_PRESENCE_PENALTY)
+            prefs.remove(COMPACTION_ENABLED)
+            prefs.remove(COMPACTION_STRATEGY)
+            prefs.remove(COMPACTION_MESSAGE_COUNT)
+            prefs.remove(COMPACTION_TOKEN_PERCENT)
+            prefs.remove(COMPACTION_TOKEN_SIZE)
+            prefs.remove(COMPACTION_SUMMARY_MODE)
+            prefs.remove(COMPACTION_LLM_MODEL)
+            prefs.remove(COMPACTION_KEEP_RECENT)
+            prefs.remove(COMPACTION_LIMIT_MODE)
+            prefs.remove(COMPACTION_SUMMARY_INSTRUCTIONS)
+            prefs.remove(MANUAL_CONTEXT_TOKENS)
 
             // Derived fetch state is never restored. Invalidate it when portable provider/model
             // configuration is replaced so stale results cannot masquerade as imported data.
@@ -1232,5 +1339,57 @@ class SettingsManager(private val context: Context) {
             prefs.remove(CUSTOM_ENDPOINT_RESOLUTIONS_JSON)
             prefs.remove(LAST_MODELS_FETCH_FINGERPRINT)
         }
+    }
+
+    // ── Context Compaction ────────────────────────────────────
+    suspend fun setCompactionEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[COMPACTION_ENABLED] = enabled }
+    }
+
+    suspend fun setCompactionStrategy(strategy: String) {
+        context.dataStore.edit { it[COMPACTION_STRATEGY] = strategy }
+    }
+
+    suspend fun setCompactionMessageCount(count: Int) {
+        context.dataStore.edit { it[COMPACTION_MESSAGE_COUNT] = count }
+    }
+
+    suspend fun setCompactionTokenPercent(percent: Int) {
+        context.dataStore.edit { it[COMPACTION_TOKEN_PERCENT] = percent }
+    }
+
+    suspend fun setCompactionTokenSize(size: Int) {
+        context.dataStore.edit { it[COMPACTION_TOKEN_SIZE] = size }
+    }
+
+    suspend fun setCompactionSummaryMode(mode: String) {
+        context.dataStore.edit { it[COMPACTION_SUMMARY_MODE] = mode }
+    }
+
+    suspend fun setCompactionLlmModel(model: String?) {
+        context.dataStore.edit { if (model == null) it.remove(COMPACTION_LLM_MODEL) else it[COMPACTION_LLM_MODEL] = model }
+    }
+
+    suspend fun setCompactionSummaryInstructions(instructions: String) {
+        context.dataStore.edit {
+            if (instructions.isBlank()) it.remove(COMPACTION_SUMMARY_INSTRUCTIONS)
+            else it[COMPACTION_SUMMARY_INSTRUCTIONS] = instructions
+        }
+    }
+
+    suspend fun setCompactionKeepRecent(count: Int) {
+        context.dataStore.edit { it[COMPACTION_KEEP_RECENT] = count }
+    }
+
+    suspend fun setCompactionLimitMode(mode: String) {
+        context.dataStore.edit { it[COMPACTION_LIMIT_MODE] = mode }
+    }
+
+    suspend fun setManualContextTokens(tokens: Int) {
+        context.dataStore.edit { it[MANUAL_CONTEXT_TOKENS] = tokens }
+    }
+
+    suspend fun setCompactionState(state: Map<String, CompactionMarker>) {
+        context.dataStore.edit { it[COMPACTION_STATE_JSON] = json.encodeToString(state) }
     }
 }

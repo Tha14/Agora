@@ -1,5 +1,7 @@
 package com.newoether.agora.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.Animatable
@@ -33,11 +34,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.newoether.agora.R
 import com.newoether.agora.model.ChatMessage
 import com.newoether.agora.model.MessageStatus
 import com.newoether.agora.model.Participant
@@ -367,6 +385,11 @@ internal fun MessageList(
     regenerationTransition: RegenerationTransitionRequest? = null,
     onRegenerationFadeOutFinished: (Long) -> Unit = {},
     visualizeContextRollout: Boolean = false,
+    compactedMessageIds: Set<String> = emptySet(),
+    activeCompactionMarker: com.newoether.agora.data.CompactionMarker? = null,
+    compactionBoundaryMessageId: String? = null,
+    compactionFoldedCount: Int = 0,
+    onRevertCompaction: () -> Unit = {},
     toolCallDisplayMode: String = ToolCallDisplayModes.DEFAULT,
     autoExpandActiveGroup: Boolean = true,
     detailedTokenUsage: Boolean = false,
@@ -498,11 +521,14 @@ internal fun MessageList(
     val allProjectionKey = remember(allMessages) {
         allMessages.list.map(ChatMessage::toRunProjectionKey)
     }
-    val inContextIds = remember(visibleProjectionKey, maxContextWindow) {
+    val inContextIds = remember(visibleProjectionKey, maxContextWindow, compactedMessageIds) {
         val currentPath = visibleProjectionKey.filter { it.participant != Participant.ERROR }
         val contextStartIndex =
             (currentPath.size - maxContextWindow).coerceAtLeast(0)
-        currentPath.drop(contextStartIndex).mapTo(linkedSetOf()) { it.id }
+        val rolledOut = currentPath.drop(contextStartIndex).mapTo(linkedSetOf()) { it.id }
+        // Compaction folds the oldest messages into a summary; treat every folded id as
+        // permanently out of context so the visualize/context rollout dims them consistently.
+        rolledOut + compactedMessageIds
     }
 
     val activeMessageIds = remember(messages) {
@@ -516,6 +542,17 @@ internal fun MessageList(
     }
     val turnCache = remember { MessageListTurnCache() }
     val turns = remember(presentationMessages) { turnCache.update(presentationMessages) }
+    // Index of the turn holding the compaction boundary message, so the toggleable inline entry can
+    // be inserted exactly where the fold happened (between the summarized history and the verbatim
+    // tail). -1 means the boundary is not present in the rendered turns. A compaction that ran
+    // mid-tool-round stores a hidden tool_/result_ boundary id; the caller resolves it to the first
+    // visible message at/after the fold so the entry still anchors to a real turn.
+    val compactionBoundaryTurnIndex = remember(activeCompactionMarker, turns) {
+        val marker = activeCompactionMarker ?: return@remember -1
+        val anchor = compactionBoundaryMessageId ?: marker.boundaryMessageId
+        if (anchor.isBlank()) return@remember -1
+        messageListTurnIndex(turns, anchor)
+    }
     val lastUserMessage = messages.list.lastOrNull { it.participant == Participant.USER }
     val resolvedEditReplacement = remember(messages, pendingEditVisualReplacement) {
         resolvePendingEditReplacement(
@@ -968,6 +1005,7 @@ internal fun MessageList(
             isEditing = editingMessageId == message.id,
             isSwitching = isSwitching,
             isInContext = isInContext,
+            isCompacted = message.id in compactedMessageIds,
             modelAliases = modelAliases,
             visualizeContextRollout = visualizeContextRollout,
             toolCallDisplayMode = toolCallDisplayMode,
@@ -1108,39 +1146,67 @@ internal fun MessageList(
             state = state,
             userScrollEnabled = userScrollEnabled
         ) {
-            items(turns, key = { turn -> stableVisualKey(turn.key) }) { turn ->
-                // A turn's key and composition survive when the next USER is appended. Only the
-                // new turn enters; the previous assistant never moves to a different Lazy item.
-                Box(
-                    modifier = Modifier,
-                ) {
-                    // The last turn atomically absorbs bottom space. Earlier turns keep the same
-                    // Column call site with a zero minimum, so losing tail status cannot dispose
-                    // or recreate any child message.
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(
-                                min = if (turn.key == lastUserMessage?.id) tailMinHeight else 0.dp,
-                            ),
+            val anchoredBoundaryMarker = activeCompactionMarker
+                ?.takeIf { compactionBoundaryTurnIndex >= 0 }
+            turns.forEachIndexed { index, turn ->
+                if (anchoredBoundaryMarker != null && index == compactionBoundaryTurnIndex) {
+                    item(key = "agora:compaction-boundary-entry") {
+                        CompactionBoundaryEntry(
+                            marker = anchoredBoundaryMarker,
+                            foldedMessageCount = compactionFoldedCount,
+                            onRevert = onRevertCompaction,
+                        )
+                    }
+                }
+                item(key = stableVisualKey(turn.key)) {
+                    // A turn's key and composition survive when the next USER is appended. Only the
+                    // new turn enters; the previous assistant never moves to a different Lazy item.
+                    Box(
+                        modifier = Modifier,
                     ) {
-                        val lastActiveMessageIndex = turn.messages.indexOfLast { message ->
-                            message.id in activeMessageIds
-                        }
-                        turn.messages.forEachIndexed { index, message ->
-                            key(stableVisualKey(message.id)) {
-                                renderMessage(message)
+                        // The last turn atomically absorbs bottom space. Earlier turns keep the same
+                        // Column call site with a zero minimum, so losing tail status cannot dispose
+                        // or recreate any child message.
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(
+                                    min = if (turn.key == lastUserMessage?.id) tailMinHeight else 0.dp,
+                                ),
+                        ) {
+                            val lastActiveMessageIndex = turn.messages.indexOfLast { message ->
+                                message.id in activeMessageIds
                             }
+                            turn.messages.forEachIndexed { messageIndex, message ->
+                                key(stableVisualKey(message.id)) {
+                                    renderMessage(message)
+                                }
+                                if (
+                                    turn.key == lastUserMessage?.id &&
+                                    messageIndex == lastActiveMessageIndex
+                                ) {
+                                    key("agora:streaming-tail:${turn.key}") {
+                                        StreamingTailIndicator(
+                                            // Text-bottom placement belongs only to the visual dot.
+                                            // Page attachment is owned by AbsoluteBottomSentinelKey.
+                                            visible =
+                                                streamingIndicatorVisible && answeringTailVisible,
+                                        )
+                                    }
+                                }
+                            }
+                            // The compaction footer belongs to the last response: it renders inside
+                            // the last turn (right under the bottom-most message) rather than as a
+                            // separate Lazy item, so any tail empty-space padding lands BELOW the
+                            // banner instead of being wedged between it and the last reply.
                             if (
                                 turn.key == lastUserMessage?.id &&
-                                index == lastActiveMessageIndex
+                                activeCompactionMarker != null &&
+                                !isLoading
                             ) {
-                                key("agora:streaming-tail:${turn.key}") {
-                                    StreamingTailIndicator(
-                                        // Text-bottom placement belongs only to the visual dot.
-                                        // Page attachment is owned by AbsoluteBottomSentinelKey.
-                                        visible =
-                                            streamingIndicatorVisible && answeringTailVisible,
+                                key("agora:compaction-footer") {
+                                    CompactionBoundaryBanner(
+                                        foldedMessageCount = compactionFoldedCount,
                                     )
                                 }
                             }
@@ -1154,6 +1220,180 @@ internal fun MessageList(
             item(key = AbsoluteBottomSentinelKey) {
                 Spacer(Modifier.fillMaxWidth().height(1.dp))
             }
+        }
+    }
+}
+
+/**
+ * One "small section" of a compaction summary — an optional header plus its body text. Used to
+ * render the folded summary as a set of compact blocks inside a toggleable inline entry.
+ */
+internal data class CompactionSummarySection(
+    val header: String?,
+    val body: String,
+)
+
+/**
+ * Splits a compaction summary into small displayable sections.
+ *
+ * Lines that begin a section (markdown headers, numbered/bulleted entries, or the deterministic
+ * `User:`/`Assistant:`/`Error:` prefixes) start a new section; following lines append to its body.
+ */
+internal fun splitCompactionSummaryIntoSections(summary: String): List<CompactionSummarySection> {
+    if (summary.isBlank()) return emptyList()
+    val headerPattern = Regex(
+        "^[\\s]*" +
+            "(?:#{1,6}\\s+|\\d+[.)]\\s+|[-*]\\s+|\\*\\*[^*]+\\*\\*.*|" +
+            "(User|Assistant|Error):\\s*)",
+    )
+    val sections = mutableListOf<CompactionSummarySection>()
+    var header: String? = null
+    val body = StringBuilder()
+
+    fun flush() {
+        val trimmedBody = body.toString().trim()
+        if (header != null || trimmedBody.isNotEmpty()) {
+            sections += CompactionSummarySection(header, trimmedBody)
+        }
+        header = null
+        body.clear()
+    }
+
+    for (rawLine in summary.lines()) {
+        val line = rawLine.trim()
+        if (line.isBlank()) continue
+        if (headerPattern.containsMatchIn(line)) {
+            flush()
+            header = line
+        } else if (body.isNotEmpty()) {
+            body.append('\n').append(line)
+        } else {
+            body.append(line)
+        }
+    }
+    flush()
+    return sections
+}
+
+/**
+ * Toggleable inline chat-history entry placed at the compaction boundary. Collapsed it reads like a
+ * compact system card ("Context compacted"); tapping it expands the folded summary as small
+ * sections. Revert restores the verbatim conversation.
+ */
+@Composable
+private fun CompactionBoundaryEntry(
+    marker: com.newoether.agora.data.CompactionMarker,
+    foldedMessageCount: Int,
+    onRevert: () -> Unit,
+) {
+    var expanded by remember(marker.boundaryMessageId, marker.conversationId) {
+        mutableStateOf(false)
+    }
+    val sections = remember(marker.summaryText) {
+        splitCompactionSummaryIntoSections(marker.summaryText)
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp)),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = if (expanded) {
+                        Icons.Default.ExpandLess
+                    } else {
+                        Icons.Default.ExpandMore
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.compaction_banner_title),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.compaction_banner_body, foldedMessageCount),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(onClick = onRevert) {
+                    Text(stringResource(R.string.compaction_revert_action))
+                }
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+                    if (sections.isEmpty()) {
+                        Text(
+                            text = marker.summaryText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        sections.forEachIndexed { index, section ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        .copy(alpha = 0.12f),
+                                )
+                            }
+                            if (!section.header.isNullOrBlank()) {
+                                Text(
+                                    text = section.header,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                            if (section.body.isNotEmpty()) {
+                                Text(
+                                    text = section.body,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactionBoundaryBanner(
+    foldedMessageCount: Int,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp)),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text(
+                text = stringResource(R.string.compaction_banner_title),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                text = stringResource(R.string.compaction_banner_body, foldedMessageCount),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = stringResource(R.string.compaction_banner_review_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+            )
         }
     }
 }

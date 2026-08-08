@@ -32,7 +32,8 @@ android {
 
 
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // Dual-device testing: ARMv7 (older 32-bit-supported device) + ARMv8 (64-bit).
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
 
         externalNativeBuild {

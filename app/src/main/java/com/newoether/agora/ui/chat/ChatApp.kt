@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.newoether.agora.R
+import com.newoether.agora.data.CompactionMarker
 import com.newoether.agora.data.isOpenAiProtocolProvider
 import com.newoether.agora.util.gradientBlur
 import com.newoether.agora.model.Participant
@@ -455,6 +456,7 @@ fun ChatApp(
     val detailedTokenUsage by viewModel.settings.detailedTokenUsage.collectAsState()
     val conversationSettings by viewModel.settings.conversationSettings.collectAsState()
     val pendingSettings by viewModel.pendingConversationSettings.collectAsState()
+    val activeCompactionMarker by viewModel.activeCompactionMarker.collectAsState()
     // Resolved per-conversation values: override → global default
     val convId = currentConversationId
     val convOverride = if (convId != null) conversationSettings[convId] else pendingSettings
@@ -646,6 +648,69 @@ fun ChatApp(
         bypassScrollIsolation =
             streamingTailController.isAutoFollowing || absoluteBottomScrollPhase.isActive,
     )
+    // The marker's boundary can be a hidden tool_/result_ row when recompaction folds a path
+    // mid-tool-round; such ids never render, so an inline boundary entry could not anchor.
+    // Resolve it to the first message that actually exists in the rendered path (the first
+    // visible message at/after the boundary in the raw all-messages order).
+    val activeCompactionBoundaryId = remember(
+        activeCompactionMarker,
+        renderMessagesState.value,
+        allMessagesState.value,
+        currentConversationId,
+    ) {
+        val marker = activeCompactionMarker ?: return@remember null
+        val visibleIds = renderMessagesState.value.mapTo(hashSetOf()) { it.id }
+        if (marker.boundaryMessageId in visibleIds) {
+            marker.boundaryMessageId
+        } else {
+            val allMessages = allMessagesState.value
+            val boundaryIdx = allMessages.indexOfFirst { it.id == marker.boundaryMessageId }
+            if (boundaryIdx < 0) null
+            else (
+                allMessages
+                    .drop(boundaryIdx)
+                    .firstOrNull { it.id in visibleIds }
+                    ?: allMessages.take(boundaryIdx).lastOrNull { it.id in visibleIds }
+                )?.id
+        }
+    }
+    // Messages folded into the active compaction summary: everything before the marker's
+    // boundary in the raw all-messages order, intersected with the visible path. Uses the raw
+    // index (not the resolved visible anchor) so a fold that lands past the last visible message
+    // still dims every visible original and triggers the fallback banner instead of an inline
+    // entry that has no turn to anchor to.
+    val activeCompactionMessageIds = remember(
+        activeCompactionMarker,
+        renderMessagesState.value,
+        allMessagesState.value,
+        currentConversationId,
+    ) {
+        val marker = activeCompactionMarker ?: return@remember emptySet()
+        val boundaryIdx = allMessagesState.value.indexOfFirst { it.id == marker.boundaryMessageId }
+        if (boundaryIdx < 0) emptySet()
+        else {
+            val visibleIds = renderMessagesState.value.mapTo(hashSetOf()) { it.id }
+            allMessagesState.value
+                .take(boundaryIdx)
+                .mapNotNullTo(linkedSetOf()) { message ->
+                    message.id.takeIf { it in visibleIds }
+                }
+        }
+    }
+    // Total count of messages folded into the summary, from the full path (not just the
+    // currently-visible window), so the end-of-conversation compaction footer stays accurate.
+    val activeCompactionFoldedCount = remember(
+        activeCompactionMarker,
+        allMessagesState.value,
+        currentConversationId,
+    ) {
+        val marker = activeCompactionMarker ?: return@remember 0
+        val all = allMessagesState.value
+        if (all.isEmpty()) 0 else {
+            val boundaryIdx = all.indexOfFirst { it.id == marker.boundaryMessageId }
+            if (boundaryIdx > 0) boundaryIdx else 0
+        }
+    }
     var conversationSearchActive by rememberSaveable { mutableStateOf(false) }
     var conversationSearchQuery by rememberSaveable { mutableStateOf("") }
     var conversationSearchMatchIndex by remember { mutableIntStateOf(-1) }
@@ -1682,6 +1747,14 @@ fun ChatApp(
                                 onRegenerationFadeOutFinished =
                                     viewModel::acknowledgeRegenerationFade,
                                 visualizeContextRollout = visualizeContextRollout,
+                                compactedMessageIds = activeCompactionMessageIds,
+                                activeCompactionMarker = activeCompactionMarker,
+                                compactionBoundaryMessageId = activeCompactionBoundaryId,
+                                compactionFoldedCount = activeCompactionFoldedCount,
+                                onRevertCompaction = {
+                                    haptics.selection()
+                                    viewModel.revertCompaction()
+                                },
                                 toolCallDisplayMode = toolCallDisplayMode,
                                 autoExpandActiveGroup = autoExpandActiveGroup,
                                 detailedTokenUsage = detailedTokenUsage,

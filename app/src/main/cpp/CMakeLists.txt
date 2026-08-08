@@ -20,6 +20,15 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 
+# LLAMAFILE's fp16 NEON kernels require AArch64 (arm64-v8a). Do not enable for
+# the 32-bit armeabi-v7a target, otherwise sgemm.cpp fails to compile with
+# undeclared vld1q_f16/vld1_f16/vcvt_f32_f16 (no fp16 vector math on ARMv7).
+if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(GGML_LLAMAFILE OFF CACHE BOOL "LLAMAFILE is AArch64-only" FORCE)
+else()
+    set(GGML_LLAMAFILE ON CACHE BOOL "" FORCE)
+endif()
+
 add_subdirectory(${LLAMA_CPP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/llama)
 add_subdirectory(${LLAMA_CPP_DIR}/common ${CMAKE_CURRENT_BINARY_DIR}/common)
 add_subdirectory(${LLAMA_CPP_DIR}/tools/mtmd ${CMAKE_CURRENT_BINARY_DIR}/mtmd)

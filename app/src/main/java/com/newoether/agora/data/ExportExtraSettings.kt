@@ -43,6 +43,17 @@ object ExportExtraSettings {
         obj["defaultTopP"]?.jsonPrimitive?.float?.let { sm.saveDefaultTopP(it) }
         obj["defaultFrequencyPenalty"]?.jsonPrimitive?.float?.let { sm.saveDefaultFrequencyPenalty(it) }
         obj["defaultPresencePenalty"]?.jsonPrimitive?.float?.let { sm.saveDefaultPresencePenalty(it) }
+        obj["compactionEnabled"]?.jsonPrimitive?.boolean?.let { sm.setCompactionEnabled(it) }
+        obj["compactionStrategy"]?.jsonPrimitive?.contentOrNull?.let { sm.setCompactionStrategy(it) }
+        obj["compactionMessageCount"]?.jsonPrimitive?.int?.let { sm.setCompactionMessageCount(it) }
+        obj["compactionTokenPercent"]?.jsonPrimitive?.int?.let { sm.setCompactionTokenPercent(it) }
+        obj["compactionTokenSize"]?.jsonPrimitive?.int?.let { sm.setCompactionTokenSize(it) }
+        obj["compactionSummaryMode"]?.jsonPrimitive?.contentOrNull?.let { sm.setCompactionSummaryMode(it) }
+        obj["compactionLlmModel"]?.jsonPrimitive?.contentOrNull?.let { sm.setCompactionLlmModel(it) }
+        obj["compactionKeepRecent"]?.jsonPrimitive?.int?.let { sm.setCompactionKeepRecent(it) }
+        obj["compactionLimitMode"]?.jsonPrimitive?.contentOrNull?.let { sm.setCompactionLimitMode(it) }
+        obj["compactionSummaryInstructions"]?.jsonPrimitive?.contentOrNull?.let { sm.setCompactionSummaryInstructions(it) }
+        obj["manualContextTokens"]?.jsonPrimitive?.int?.let { sm.setManualContextTokens(it) }
         obj["conversationSettings"]?.jsonObject?.forEach { (convId, settingsJson) ->
             if (convId !in allowedConversationIds) return@forEach
             val s = settingsJson.jsonObject
@@ -68,7 +79,17 @@ object ExportExtraSettings {
                     ?.contentOrNull
                     ?.let(OpenAiServiceTiers::normalize),
                 webSearchEnabled = s["webSearchEnabled"]?.jsonPrimitive?.boolean,
-                shellEnabled = s["shellEnabled"]?.jsonPrimitive?.boolean
+                shellEnabled = s["shellEnabled"]?.jsonPrimitive?.boolean,
+                compactEnabled = s["compactEnabled"]?.jsonPrimitive?.boolean,
+                compactStrategy = s["compactStrategy"]?.jsonPrimitive?.contentOrNull,
+                compactMessageCount = s["compactMessageCount"]?.jsonPrimitive?.int,
+                compactTokenPercent = s["compactTokenPercent"]?.jsonPrimitive?.int,
+                compactTokenSize = s["compactTokenSize"]?.jsonPrimitive?.int,
+                compactSummaryMode = s["compactSummaryMode"]?.jsonPrimitive?.contentOrNull,
+                compactLlmModel = s["compactLlmModel"]?.jsonPrimitive?.contentOrNull,
+                compactKeepRecent = s["compactKeepRecent"]?.jsonPrimitive?.int,
+                compactLimitMode = s["compactLimitMode"]?.jsonPrimitive?.contentOrNull,
+                manualContextTokens = s["manualContextTokens"]?.jsonPrimitive?.int,
             )
             if (!cs.isAllNull()) sm.saveConversationSettings(convId, cs)
         }

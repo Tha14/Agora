@@ -260,6 +260,8 @@ class GenerationManager(
     private val context: android.content.Context,
     private val sandboxFactory: com.newoether.agora.sandbox.SandboxManagerFactory? = null,
     additionalToolProviders: List<ToolProvider> = emptyList(),
+    private val settingsRepository: com.newoether.agora.data.repository.SettingsRepository? = null,
+    private val contextCompactor: ContextCompactor? = null,
 ) {
     var onMessagePersisted: ((messageId: String, text: String) -> Unit)? = null
 
@@ -824,6 +826,33 @@ class GenerationManager(
             )
             val providerConfig = if (transcriptionPerformed) rawProviderConfig.copy(includeImages = false) else rawProviderConfig
 
+            // Apply context compaction (summary of oldest messages) before projections so the
+            // provider only ever sees the compacted request and the tool loop builds on it.
+            var requestPath = currentPath
+            if (settingsRepository != null && contextCompactor != null) {
+                val compactConfig = settingsRepository.resolveCompactionConfig(conversationId)
+                if (compactConfig.enabled) {
+                    val modelId = config.modelId
+                    val budget = resolveCompactionContextBudget(compactConfig, modelId)
+                    when (val compacted = contextCompactor.prepareRequest(
+                        conversationId = conversationId,
+                        path = currentPath,
+                        config = compactConfig,
+                        contextLimit = budget,
+                    )) {
+                        is RequestCompactionResult.Reuse -> requestPath = currentPath
+                        is RequestCompactionResult.Compacted -> {
+                            requestPath = compacted.path
+                            requestTrace?.mark(
+                                "context_compacted_request_time",
+                                "marks=${conversationId} boundary=${compacted.marker.boundaryMessageId} " +
+                                    "mode=${compacted.marker.summaryMode}",
+                            )
+                        }
+                    }
+                }
+            }
+
             var toolCallData: ToolCallData? = null
             var toolCallDataList: List<ToolCallData> = emptyList()
             val roundToolSegments = mutableListOf<MessageSegment>()
@@ -1213,7 +1242,7 @@ class GenerationManager(
             }
 
             val projectedPath = projectToolResultImagesToUserMessage(
-                projectAssistantImagesToLatestUserMessage(currentPath, providerConfig.includeImages),
+                projectAssistantImagesToLatestUserMessage(requestPath, providerConfig.includeImages),
                 providerConfig.includeImages,
             )
             val apiPath = applyUserTemplate(projectedPath, config.userPrepend, config.userPostpend)
@@ -1232,7 +1261,7 @@ class GenerationManager(
 
             // Multi-tool loop
             var toolRound = 0
-            toolPath = currentPath
+            toolPath = requestPath
 
             while (toolCallDataList.isNotEmpty() && currentStatus != MessageStatus.ERROR && currentCoroutineContext().isActive) {
                 toolRound++
@@ -1342,6 +1371,33 @@ class GenerationManager(
                 }
 
                 lastEmitMs = 0L
+
+                // Mid-generation recompaction: the accumulated tool path may have grown past the
+                // budget since the request-time fold. Re-fold in place so the NEXT round's dispatch
+                // and all remaining tool rounds run against a compacted context instead of aborting.
+                if (settingsRepository != null && contextCompactor != null) {
+                    val inFlightConfig = settingsRepository.resolveCompactionConfig(conversationId)
+                    if (inFlightConfig.enabled) {
+                        val inFlightBudget = resolveCompactionContextBudget(inFlightConfig, config.modelId)
+                        when (val inFlight = contextCompactor.foldInFlightPath(
+                            conversationId = conversationId,
+                            path = toolPath,
+                            config = inFlightConfig,
+                            contextLimit = inFlightBudget,
+                        )) {
+                            is RequestCompactionResult.Compacted -> {
+                                toolPath = inFlight.path
+                                requestTrace?.mark(
+                                    "context_recompacted_in_flight",
+                                    "marks=${conversationId} round=${toolRound} " +
+                                        "boundary=${inFlight.marker.boundaryMessageId} " +
+                                        "mode=${inFlight.marker.summaryMode}",
+                                )
+                            }
+                            is RequestCompactionResult.Reuse -> Unit
+                        }
+                    }
+                }
 
                 val projectedToolPath = projectToolResultImagesToUserMessage(
                     projectAssistantImagesToLatestUserMessage(toolPath, providerConfig.includeImages),

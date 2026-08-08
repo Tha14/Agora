@@ -3,6 +3,8 @@ package com.newoether.agora.data.repository
 import com.newoether.agora.data.ApiKeyEntry
 import com.newoether.agora.data.BuiltInPrompts
 import com.newoether.agora.data.ConversationSettings
+import com.newoether.agora.data.CompactionConfig
+import com.newoether.agora.data.CompactionMarker
 import com.newoether.agora.data.CustomEndpointProtocol
 import com.newoether.agora.data.CustomEndpointResolution
 import com.newoether.agora.data.CustomProviderConfig
@@ -186,6 +188,24 @@ class SettingsRepository(
     val autoDeleteEnabled: StateFlow<Boolean> = hot(settingsManager.autoDeleteEnabled, true)
     val autoDeletePeriodHours: StateFlow<Int> = hot(settingsManager.autoDeletePeriodHours, 168)
     val lastBackupTimestamp: StateFlow<Long> = hot(settingsManager.lastBackupTimestamp, 0L)
+
+    // ── Context Compaction ────────────────────────────────────
+    val compactionEnabled: StateFlow<Boolean> = hot(settingsManager.compactionEnabled, false)
+    val compactionStrategy: StateFlow<String> =
+        hot(settingsManager.compactionStrategy, SettingsManager.COMPACTION_STRATEGY_TOKEN_PERCENT)
+    val compactionMessageCount: StateFlow<Int> = hot(settingsManager.compactionMessageCount, 40)
+    val compactionTokenPercent: StateFlow<Int> = hot(settingsManager.compactionTokenPercent, 80)
+    val compactionTokenSize: StateFlow<Int> = hot(settingsManager.compactionTokenSize, 0)
+    val compactionSummaryMode: StateFlow<String> =
+        hot(settingsManager.compactionSummaryMode, SettingsManager.COMPACTION_SUMMARY_DETERMINISTIC)
+    val compactionLlmModel: StateFlow<String?> = hot(settingsManager.compactionLlmModel, null)
+    val compactionKeepRecent: StateFlow<Int> = hot(settingsManager.compactionKeepRecent, 4)
+    val compactionLimitMode: StateFlow<String> =
+        hot(settingsManager.compactionLimitMode, SettingsManager.COMPACTION_LIMIT_AUTO)
+    val compactionSummaryInstructions: StateFlow<String> =
+        hot(settingsManager.compactionSummaryInstructions, "")
+    val manualContextTokens: StateFlow<Int> = hot(settingsManager.manualContextTokens, 4096)
+    val compactionState: StateFlow<Map<String, CompactionMarker>> = hot(settingsManager.compactionState, emptyMap())
 
     // ── Write (fire-and-forget; read current state from own StateFlows) ──
     //
@@ -501,6 +521,20 @@ class SettingsRepository(
     fun setRagThreshold(threshold: Float) = scope.launch { settingsManager.saveRagThreshold(threshold) }
 
     fun setShellConfirmEnabled(enabled: Boolean) = scope.launch { settingsManager.saveShellConfirmEnabled(enabled) }
+    fun setCompactionEnabled(enabled: Boolean) = scope.launch { settingsManager.setCompactionEnabled(enabled) }
+    fun setCompactionStrategy(strategy: String) = scope.launch { settingsManager.setCompactionStrategy(strategy) }
+    fun setCompactionMessageCount(count: Int) = scope.launch { settingsManager.setCompactionMessageCount(count) }
+    fun setCompactionTokenPercent(percent: Int) = scope.launch { settingsManager.setCompactionTokenPercent(percent) }
+    fun setCompactionTokenSize(size: Int) = scope.launch { settingsManager.setCompactionTokenSize(size) }
+    fun setCompactionSummaryMode(mode: String) = scope.launch { settingsManager.setCompactionSummaryMode(mode) }
+    fun setCompactionLlmModel(model: String?) = scope.launch { settingsManager.setCompactionLlmModel(model) }
+    fun setCompactionKeepRecent(count: Int) = scope.launch { settingsManager.setCompactionKeepRecent(count) }
+    fun setCompactionLimitMode(mode: String) = scope.launch { settingsManager.setCompactionLimitMode(mode) }
+    fun setCompactionSummaryInstructions(instructions: String) =
+        scope.launch { settingsManager.setCompactionSummaryInstructions(instructions) }
+    fun setManualContextTokens(tokens: Int) = scope.launch { settingsManager.setManualContextTokens(tokens) }
+    fun setCompactionState(state: Map<String, CompactionMarker>) =
+        scope.launch { settingsManager.setCompactionState(state) }
     fun addShellDevice(device: ShellDeviceConfig) = scope.launch { settingsManager.saveShellDevices(shellDevices.value + device) }
     fun updateShellDevice(device: ShellDeviceConfig) = scope.launch {
         settingsManager.saveShellDevices(shellDevices.value.map { if (it.id == device.id) device else it })
@@ -569,4 +603,40 @@ class SettingsRepository(
     suspend fun saveAutoBackupDirectory(path: String) = settingsManager.saveAutoBackupDirectory(path)
     suspend fun saveAutoDeleteEnabled(enabled: Boolean) = settingsManager.saveAutoDeleteEnabled(enabled)
     suspend fun saveAutoDeletePeriodHours(hours: Int) = settingsManager.saveAutoDeletePeriodHours(hours)
+
+    // ── Context Compaction ────────────────────────────────────
+    suspend fun getCompactionEnabled(): Boolean = settingsManager.compactionEnabled.first()
+    suspend fun getCompactionStrategy(): String = settingsManager.compactionStrategy.first()
+    suspend fun getCompactionMessageCount(): Int = settingsManager.compactionMessageCount.first()
+    suspend fun getCompactionTokenPercent(): Int = settingsManager.compactionTokenPercent.first()
+    suspend fun getCompactionTokenSize(): Int = settingsManager.compactionTokenSize.first()
+    suspend fun getCompactionSummaryMode(): String = settingsManager.compactionSummaryMode.first()
+    suspend fun getCompactionLlmModel(): String? = settingsManager.compactionLlmModel.first()
+    suspend fun getCompactionKeepRecent(): Int = settingsManager.compactionKeepRecent.first()
+    suspend fun getCompactionLimitMode(): String = settingsManager.compactionLimitMode.first()
+    suspend fun getManualContextTokens(): Int = settingsManager.manualContextTokens.first()
+    suspend fun getCompactionState(): Map<String, CompactionMarker> = settingsManager.compactionState.first()
+    suspend fun saveCompactionState(state: Map<String, CompactionMarker>) = settingsManager.setCompactionState(state)
+
+    /**
+     * Resolves the effective compaction configuration for a single conversation, layering the
+     * per-conversation overrides in [conversationSettings] over the global defaults. Reads the
+     * on-disk DataStore values (not `.value`) so request-builders always see the persisted state.
+     */
+    suspend fun resolveCompactionConfig(conversationId: String): CompactionConfig {
+        val over = conversationSettings.first()[conversationId]
+        return CompactionConfig(
+            enabled = over?.compactEnabled ?: getCompactionEnabled(),
+            strategy = over?.compactStrategy ?: getCompactionStrategy(),
+            messageCount = over?.compactMessageCount ?: getCompactionMessageCount(),
+            tokenPercent = over?.compactTokenPercent ?: getCompactionTokenPercent(),
+            tokenSize = over?.compactTokenSize ?: getCompactionTokenSize(),
+            summaryMode = over?.compactSummaryMode
+                ?: getCompactionSummaryMode(),
+            llmModel = over?.compactLlmModel ?: getCompactionLlmModel(),
+            keepRecent = over?.compactKeepRecent ?: getCompactionKeepRecent(),
+            limitMode = over?.compactLimitMode ?: getCompactionLimitMode(),
+            manualContextTokens = over?.manualContextTokens ?: getManualContextTokens(),
+        )
+    }
 }

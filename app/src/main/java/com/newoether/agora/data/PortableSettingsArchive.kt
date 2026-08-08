@@ -147,6 +147,18 @@ internal object PortableSettingsArchive {
         putNullableFloat("defaultFrequencyPenalty", sm.defaultFrequencyPenalty.first())
         putNullableFloat("defaultPresencePenalty", sm.defaultPresencePenalty.first())
         putNullableString("activeSystemPromptId", sm.activeSystemPromptId.first())
+
+        put("compactionEnabled", JsonPrimitive(sm.compactionEnabled.first()))
+        put("compactionStrategy", JsonPrimitive(sm.compactionStrategy.first()))
+        put("compactionMessageCount", JsonPrimitive(sm.compactionMessageCount.first()))
+        put("compactionTokenPercent", JsonPrimitive(sm.compactionTokenPercent.first()))
+        put("compactionTokenSize", JsonPrimitive(sm.compactionTokenSize.first()))
+        put("compactionSummaryMode", JsonPrimitive(sm.compactionSummaryMode.first()))
+        putNullableString("compactionLlmModel", sm.compactionLlmModel.first())
+        put("compactionKeepRecent", JsonPrimitive(sm.compactionKeepRecent.first()))
+        put("compactionLimitMode", JsonPrimitive(sm.compactionLimitMode.first()))
+        putNullableString("compactionSummaryInstructions", sm.compactionSummaryInstructions.first())
+        put("manualContextTokens", JsonPrimitive(sm.manualContextTokens.first()))
     }
 
     /**
@@ -427,6 +439,22 @@ internal object PortableSettingsArchive {
         if (obj.containsKey("defaultPresencePenalty")) {
             sm.saveDefaultPresencePenalty(obj.float("defaultPresencePenalty"))
         }
+
+        obj.boolean("compactionEnabled")?.let { sm.setCompactionEnabled(it) }
+        obj.string("compactionStrategy")?.let { sm.setCompactionStrategy(it) }
+        obj.int("compactionMessageCount")?.let { sm.setCompactionMessageCount(it) }
+        obj.int("compactionTokenPercent")?.let { sm.setCompactionTokenPercent(it) }
+        obj.int("compactionTokenSize")?.let { sm.setCompactionTokenSize(it) }
+        obj.string("compactionSummaryMode")?.let { sm.setCompactionSummaryMode(it) }
+        if (obj.containsKey("compactionLlmModel")) {
+            sm.setCompactionLlmModel(obj.nullableString("compactionLlmModel"))
+        }
+        obj.int("compactionKeepRecent")?.let { sm.setCompactionKeepRecent(it) }
+        obj.string("compactionLimitMode")?.let { sm.setCompactionLimitMode(it) }
+        if (obj.containsKey("compactionSummaryInstructions")) {
+            sm.setCompactionSummaryInstructions(obj.nullableString("compactionSummaryInstructions") ?: "")
+        }
+        obj.int("manualContextTokens")?.let { sm.setManualContextTokens(it) }
 
         val activePromptKey = when {
             obj.containsKey("activeSystemPromptId") -> "activeSystemPromptId"
