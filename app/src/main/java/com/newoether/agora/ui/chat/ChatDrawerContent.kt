@@ -136,6 +136,7 @@ internal fun ChatDrawerContent(
     val currentConversationId by viewModel.currentConversationId.collectAsState()
     val isSwitching by viewModel.isSwitching.collectAsState()
     val generatingConversationIds by viewModel.generatingConversationIds.collectAsState()
+    val runningTaskIds by viewModel.runningTaskIds.collectAsState()
 
     ModalDrawerSheet(
         drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
@@ -208,9 +209,23 @@ internal fun ChatDrawerContent(
                     modifier = Modifier.fillMaxWidth().height(42.dp),
                     shape = CircleShape
                 ) {
-                    Icon(Icons.Default.Repeat, null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.tasks), style = ChatType.drawerButton)
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Repeat, null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.tasks), style = ChatType.drawerButton)
+                        }
+                        if (runningTaskIds.isNotEmpty()) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 10.dp)
+                                    .size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
