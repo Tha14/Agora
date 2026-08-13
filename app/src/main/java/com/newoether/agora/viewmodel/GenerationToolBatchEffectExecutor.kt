@@ -97,6 +97,10 @@ internal class GenerationToolOverlay(
             toolCallId = call.id,
             signature = call.signature,
             signatureProvider = providerName.takeIf { call.signature != null },
+            responseOutputItems = call.responseOutputItems,
+            responseOutputItemProvider = providerName.takeIf {
+                call.responseOutputItems.isNotEmpty()
+            },
             toolState = ToolExecutionStates.RUNNING,
             toolTarget = metadata?.target ?: current.toolTarget,
             toolDisplayName = metadata?.displayName ?: current.toolDisplayName,
@@ -111,6 +115,13 @@ internal class GenerationToolOverlay(
             is ToolExecutionEvent.OutputDelta -> current.copy(
                 toolState = ToolExecutionStates.RUNNING,
                 toolProgress = appendBoundedToolOutput(current.toolProgress, event.text),
+            )
+            is ToolExecutionEvent.OutputSnapshot -> current.copy(
+                toolState = ToolExecutionStates.RUNNING,
+                toolProgress = takeLastWholeCodePoints(
+                    event.text,
+                    Constants.MAX_TOOL_RESULT_LENGTH,
+                ),
             )
             is ToolExecutionEvent.TargetResolved -> current.copy(toolTarget = event.target)
             is ToolExecutionEvent.Progress -> current.copy(toolState = ToolExecutionStates.RUNNING)
@@ -145,6 +156,8 @@ internal class GenerationToolOverlay(
                 displayName = completed.toolDisplayName,
                 resultText = displayText,
                 structuredResult = structuredResult,
+                responseOutputItems = completed.responseOutputItems,
+                responseOutputItemProvider = completed.responseOutputItemProvider,
             ),
         )
     }
@@ -168,6 +181,15 @@ internal class GenerationToolOverlay(
     }
 }
 
+internal fun takeLastWholeCodePoints(text: String, maxChars: Int): String {
+    if (text.length <= maxChars) return text
+    var start = text.length - maxChars
+    if (start > 0 && Character.isLowSurrogate(text[start]) && Character.isHighSurrogate(text[start - 1])) {
+        start++
+    }
+    return text.substring(start)
+}
+
 internal data class CompletedToolCall(
     val segment: MessageSegment,
     val data: ToolCallData,
@@ -178,6 +200,7 @@ internal data class AuthorizedToolBatchRequest(
     val calls: List<StreamEvent.ToolCallRequest>,
     val context: GenerationContext,
     val conversationId: String,
+    val authorizedToolNames: Set<String>,
 ) {
     init {
         require(calls.isNotEmpty())
@@ -223,6 +246,7 @@ internal class GenerationToolBatchEffectExecutor(
                     name = call.name,
                     arguments = call.arguments,
                     context = request.context,
+                    authorizedToolNames = request.authorizedToolNames,
                 ),
             ) { event ->
                 if (event !is ToolExecutionEvent.Completed) {

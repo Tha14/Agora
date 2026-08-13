@@ -22,6 +22,8 @@ data class GenerationConfig(
     val thinkingBudgetEnabled: Boolean = false,
     val thinkingBudgetTokens: Int = 4096,
     val openAiServiceTier: String? = null,
+    val responsesApiEnabled: Boolean = false,
+    val openAiWebSearchEnabled: Boolean = false,
     val baseUrl: String?,
     val userPrepend: String? = null,
     val userPostpend: String? = null,
@@ -76,10 +78,12 @@ data class GenerationContext(
 /** Frozen automatic-Compact policy and provider access captured with one generation. */
 internal data class AutomaticCompactConfig(
     val enabled: Boolean,
+    val thresholdPercent: Int,
     val request: CompactRequest,
     val providerName: String,
     val apiKey: String,
     val baseUrl: String?,
+    val responsesApiEnabled: Boolean = false,
     val provider: LlmProvider?,
     val configured: Boolean,
     /** Frozen attachment/transcription policy used to project Compact input exactly once. */

@@ -6,6 +6,8 @@ import com.newoether.agora.model.ContextBudget
 import com.newoether.agora.data.ApiKeyEntry
 import com.newoether.agora.data.BuiltInPrompts
 import com.newoether.agora.data.DEFAULT_CONTEXT_COMPACT_ENABLED
+import com.newoether.agora.data.DEFAULT_CONTEXT_COMPACT_RETAIN_COUNT
+import com.newoether.agora.data.DEFAULT_CONTEXT_COMPACT_THRESHOLD_PERCENT
 import com.newoether.agora.data.ConversationSettings
 import com.newoether.agora.data.CustomEndpointProtocol
 import com.newoether.agora.data.CustomEndpointResolution
@@ -102,7 +104,14 @@ class SettingsRepository(
     )
     val contextCompactModel: StateFlow<String?> = hot(settingsManager.contextCompactModel, null)
     val contextCompactPrompt: StateFlow<String> = hot(settingsManager.contextCompactPrompt, BuiltInPrompts.CONTEXT_COMPACT_SYSTEM)
-    val contextCompactRetainCount: StateFlow<Int> = hot(settingsManager.contextCompactRetainCount, 6)
+    val contextCompactRetainCount: StateFlow<Int> = hot(
+        settingsManager.contextCompactRetainCount,
+        DEFAULT_CONTEXT_COMPACT_RETAIN_COUNT,
+    )
+    val contextCompactThresholdPercent: StateFlow<Int> = hot(
+        settingsManager.contextCompactThresholdPercent,
+        DEFAULT_CONTEXT_COMPACT_THRESHOLD_PERCENT,
+    )
     val codeExecutionEnabled: StateFlow<Boolean> = hot(settingsManager.codeExecutionEnabled, false)
     val googleSearchEnabled: StateFlow<Boolean> = hot(settingsManager.googleSearchEnabled, false)
     val thinkingEnabled: StateFlow<Boolean> = hot(settingsManager.thinkingEnabled, true)
@@ -113,6 +122,8 @@ class SettingsRepository(
         hot(settingsManager.openAiServiceTierEnabled, false)
     val openAiServiceTier: StateFlow<String> =
         hot(settingsManager.openAiServiceTier, OpenAiServiceTiers.AUTO)
+    val openAiResponsesApiEnabled: StateFlow<Boolean> =
+        hot(settingsManager.openAiResponsesApiEnabled, false)
     val providerBaseUrls: StateFlow<Map<String, String>> = hot(settingsManager.providerBaseUrls, emptyMap())
     val customEndpointResolutions: StateFlow<Map<String, CustomEndpointResolution>> =
         hot(settingsManager.customEndpointResolutions, emptyMap())
@@ -177,6 +188,7 @@ class SettingsRepository(
     val dynamicColor: StateFlow<Boolean> = hot(settingsManager.dynamicColor, true)
     val blurEffectsEnabled: StateFlow<Boolean> = hot(settingsManager.blurEffectsEnabled, true)
     val reduceMotion: StateFlow<Boolean> = hot(settingsManager.reduceMotion, false)
+    val parseInlineDollarMath: StateFlow<Boolean> = hot(settingsManager.parseInlineDollarMath, false)
     val hapticsEnabled: StateFlow<Boolean> = hot(settingsManager.hapticsEnabled, true)
     val detailedTokenUsage: StateFlow<Boolean> =
         hot(settingsManager.detailedTokenUsage, false)
@@ -381,6 +393,15 @@ class SettingsRepository(
         }
     }
 
+    fun setCustomProviderResponsesApiEnabled(name: String, enabled: Boolean) {
+        if (!CustomProviderNamePolicy.isAllowed(name)) return
+        scope.launch {
+            settingsManager.saveCustomProviders(customProviders.value.map { config ->
+                if (config.name == name) config.copy(responsesApiEnabled = enabled) else config
+            })
+        }
+    }
+
     fun updateCustomProviderProtocol(name: String, protocol: CustomEndpointProtocol) {
         if (!CustomProviderNamePolicy.isAllowed(name)) return
         scope.launch {
@@ -441,6 +462,9 @@ class SettingsRepository(
     fun setContextCompactModel(model: String?) = scope.launch { settingsManager.saveContextCompactModel(model) }
     fun setContextCompactPrompt(prompt: String) = scope.launch { settingsManager.saveContextCompactPrompt(prompt) }
     fun setContextCompactRetainCount(count: Int) = scope.launch { settingsManager.saveContextCompactRetainCount(count) }
+    fun setContextCompactThresholdPercent(percent: Int) = scope.launch {
+        settingsManager.saveContextCompactThresholdPercent(percent)
+    }
 
     fun setTitleGenerationModel(model: String?) = scope.launch { settingsManager.saveTitleGenerationModel(model) }
     fun setTitleGenerationPrompt(prompt: String) = scope.launch { settingsManager.saveTitleGenerationPrompt(prompt) }
@@ -491,6 +515,8 @@ class SettingsRepository(
         scope.launch { settingsManager.saveOpenAiServiceTierEnabled(enabled) }
     fun setOpenAiServiceTier(tier: String) =
         scope.launch { settingsManager.saveOpenAiServiceTier(tier) }
+    fun setOpenAiResponsesApiEnabled(enabled: Boolean) =
+        scope.launch { settingsManager.saveOpenAiResponsesApiEnabled(enabled) }
     fun setDefaultTemperature(v: Float?) = scope.launch { settingsManager.saveDefaultTemperature(v) }
     fun setDefaultMaxTokens(v: Int?) = scope.launch { settingsManager.saveDefaultMaxTokens(v) }
     fun setDefaultTopP(v: Float?) = scope.launch { settingsManager.saveDefaultTopP(v) }
@@ -501,6 +527,8 @@ class SettingsRepository(
     fun setDynamicColor(enabled: Boolean) = scope.launch { settingsManager.saveDynamicColor(enabled) }
     fun setBlurEffectsEnabled(enabled: Boolean) = scope.launch { settingsManager.saveBlurEffectsEnabled(enabled) }
     fun setReduceMotion(enabled: Boolean) = scope.launch { settingsManager.saveReduceMotion(enabled) }
+    fun setParseInlineDollarMath(enabled: Boolean) =
+        scope.launch { settingsManager.saveParseInlineDollarMath(enabled) }
     fun setHapticsEnabled(enabled: Boolean) = scope.launch { settingsManager.saveHapticsEnabled(enabled) }
     fun setDetailedTokenUsage(enabled: Boolean) =
         scope.launch { settingsManager.saveDetailedTokenUsage(enabled) }

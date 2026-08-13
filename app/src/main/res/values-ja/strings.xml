@@ -16,6 +16,7 @@
     <string name="tools">ツール</string>
     <string name="code_execution">コード実行</string>
     <string name="google_search">Google 検索</string>
+    <string name="openai_search">OpenAI 検索</string>
     <string name="thinking">思考</string>
     <string name="web_search">ウェブ検索</string>
     <string name="ask_agora">Agora に何でも質問...</string>
@@ -381,6 +382,10 @@
     <string name="web_search_serper">Serper</string>
     <string name="web_search_tavily">Tavily</string>
     <string name="web_search_searxng">SearXNG</string>
+    <string name="web_search_openai">OpenAI</string>
+    <string name="web_search_openai_key">OpenAI API key</string>
+    <string name="web_search_openai_key_hint">sk-...</string>
+    <string name="web_search_openai_desc">OpenAI-hosted web search through the Responses API. Requires a separate OpenAI API key.</string>
     <string name="web_search_duckduckgo">DuckDuckGo</string>
     <string name="web_search_brave_desc">プライバシー重視の検索 API。無料枠あり。</string>
     <string name="web_search_serper_desc">高速な Google 検索 API。月 2,500 回まで無料。</string>
@@ -585,6 +590,8 @@
     <string name="visual_effects">視覚効果</string>
     <string name="blur_effects">ぼかし効果</string>
     <string name="blur_effects_desc">ツールバー下のチャット一覧上部をぼかします。オフにするとパフォーマンスを節約できます。</string>
+    <string name="parse_inline_dollar_math">Parse $…$ as inline math</string>
+    <string name="parse_inline_dollar_math_desc">When disabled, single-dollar expressions such as $ x $ remain ordinary text. Other math delimiters are unchanged.</string>
     <string name="reduce_motion">モーションを減らす</string>
     <string name="reduce_motion_desc">継続的な動きや大きな空間移動を減らし、フェード、直接操作、必要な状態フィードバックは維持します。</string>
 
@@ -1063,6 +1070,8 @@
     <string name="context_compact_prompt">Compact prompt</string>
     <string name="context_compact_prompt_desc">Summary instructions</string>
     <string name="context_compact_select_model">Select compact model</string>
+    <string name="context_compact_threshold">Automatic compact threshold</string>
+    <string name="context_compact_threshold_desc">Compact when estimated context reaches this percentage of the selected window</string>
     <string name="context_compact_retain">Recent messages to keep</string>
     <string name="context_compact_retain_desc">各コンパクト後に原文のまま保持するメッセージ</string>
     <string name="context_compact_manual">Compact context</string>
@@ -1122,4 +1131,7 @@
     <string name="developer_options_export_desc">サイズ制限付きのJSONバンドルを共有します。機密内容は除去され、ファイルが自動アップロードされることはありません。</string>
     <string name="developer_options_export_share_title">Agora診断バンドルを共有</string>
     <string name="developer_options_export_failed">診断バンドルを作成できませんでした。</string>
+    <string name="responses_api">Responses API</string>
+    <string name="responses_api_desc">Chat Completions の代わりにプロバイダーの /responses エンドポイントを使用します。</string>
+    <string name="context_compact_failed">Compact failed</string>
 </resources>

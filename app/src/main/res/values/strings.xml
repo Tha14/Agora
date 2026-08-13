@@ -16,6 +16,7 @@
     <string name="tools">Tools</string>
     <string name="code_execution">Code Execution</string>
     <string name="google_search">Google Search</string>
+    <string name="openai_search">OpenAI Search</string>
     <string name="thinking">Thinking</string>
     <string name="web_search">Web Search</string>
     <string name="ask_agora">Ask Agora anything...</string>
@@ -180,7 +181,7 @@
     <string name="thought_for_seconds_called_tools">Thought for %1$ds, called %2$d tools</string>
     <string name="thought_for_minutes_called_tools">Thought for %1$dm %2$ds, called %3$d tools</string>
     <string name="called_n_tools">Called %1$d tools</string>
-    <string name="failed_to_generate">Failed to generate.</string>
+    <string name="failed_to_generate">Generation failed</string>
     <string name="generation_stopped">Generation stopped</string>
     <string name="import_invalid_gguf_title">Invalid GGUF File</string>
     <string name="import_invalid_gguf_desc">The selected file is not a valid GGUF model.</string>
@@ -420,6 +421,10 @@
     <string name="web_search_serper">Serper</string>
     <string name="web_search_tavily">Tavily</string>
     <string name="web_search_searxng">SearXNG</string>
+    <string name="web_search_openai">OpenAI</string>
+    <string name="web_search_openai_key">OpenAI API key</string>
+    <string name="web_search_openai_key_hint">sk-...</string>
+    <string name="web_search_openai_desc">OpenAI-hosted web search through the Responses API. Requires a separate OpenAI API key.</string>
     <string name="web_search_duckduckgo">DuckDuckGo</string>
     <string name="web_search_brave_desc">Privacy-focused search API. Free tier available.</string>
     <string name="web_search_kagi_desc">Premium search API with personalized results. Pay per use.</string>
@@ -628,6 +633,8 @@
     <string name="visual_effects">Visual Effects</string>
     <string name="blur_effects">Blur Effects</string>
     <string name="blur_effects_desc">Blur the top of the chat list under the toolbar. Turn off to save performance.</string>
+    <string name="parse_inline_dollar_math">Parse $…$ as inline math</string>
+    <string name="parse_inline_dollar_math_desc">When disabled, single-dollar expressions such as $ x $ remain ordinary text. Other math delimiters are unchanged.</string>
     <string name="reduce_motion">Reduce motion</string>
     <string name="reduce_motion_desc">Reduce continuous and large spatial motion while keeping fades, direct gestures, and useful state feedback.</string>
     <string name="interaction_feedback">Interaction Feedback</string>
@@ -1066,8 +1073,11 @@
     <string name="context_compact_select_model">Select compact model</string>
     <string name="context_compact_retain">Recent messages to keep</string>
     <string name="context_compact_retain_desc">Messages preserved verbatim after each compact</string>
+    <string name="context_compact_threshold">Automatic compact threshold</string>
+    <string name="context_compact_threshold_desc">Compact when estimated context reaches this percentage of the selected window</string>
     <string name="context_compact_manual">Compact context</string>
     <string name="context_compacting">Compacting context…</string>
+    <string name="context_compact_failed">Compact failed</string>
     <string name="context_compact_select_available_model">Select an available model</string>
     <string name="context_compact_prompt_empty">Prompt cannot be empty</string>
     <string name="context_compact_retain_invalid">Enter a valid retained message count</string>
@@ -1123,4 +1133,6 @@
     <string name="developer_options_export_desc">Share a bounded JSON bundle. Sensitive content is redacted, and the file is never uploaded automatically.</string>
     <string name="developer_options_export_share_title">Share Agora diagnostic bundle</string>
     <string name="developer_options_export_failed">Could not create the diagnostic bundle.</string>
+    <string name="responses_api">Responses API</string>
+    <string name="responses_api_desc">Use the provider’s /responses endpoint instead of Chat Completions.</string>
 </resources>

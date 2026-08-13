@@ -16,6 +16,7 @@
     <string name="tools">Herramientas</string>
     <string name="code_execution">Ejecución de código</string>
     <string name="google_search">Búsqueda de Google</string>
+    <string name="openai_search">Búsqueda de OpenAI</string>
     <string name="thinking">Razonamiento</string>
     <string name="web_search">Búsqueda web</string>
     <string name="ask_agora">Pregunta lo que quieras a Agora...</string>
@@ -381,6 +382,10 @@
     <string name="web_search_serper">Serper</string>
     <string name="web_search_tavily">Tavily</string>
     <string name="web_search_searxng">SearXNG</string>
+    <string name="web_search_openai">OpenAI</string>
+    <string name="web_search_openai_key">OpenAI API key</string>
+    <string name="web_search_openai_key_hint">sk-...</string>
+    <string name="web_search_openai_desc">OpenAI-hosted web search through the Responses API. Requires a separate OpenAI API key.</string>
     <string name="web_search_duckduckgo">DuckDuckGo</string>
     <string name="web_search_brave_desc">API de búsqueda centrada en la privacidad. Nivel gratuito disponible.</string>
     <string name="web_search_serper_desc">API rápida de Google Search. 2.500 consultas gratis al mes.</string>
@@ -585,6 +590,8 @@
     <string name="visual_effects">Efectos visuales</string>
     <string name="blur_effects">Efectos de desenfoque</string>
     <string name="blur_effects_desc">Desenfoca la parte superior de la lista de chat bajo la barra. Desactívalo para ahorrar rendimiento.</string>
+    <string name="parse_inline_dollar_math">Parse $…$ as inline math</string>
+    <string name="parse_inline_dollar_math_desc">When disabled, single-dollar expressions such as $ x $ remain ordinary text. Other math delimiters are unchanged.</string>
     <string name="reduce_motion">Reducir movimiento</string>
     <string name="reduce_motion_desc">Reduce el movimiento continuo y los desplazamientos espaciales amplios, y conserva los fundidos, los gestos directos y la información de estado útil.</string>
 
@@ -1063,6 +1070,8 @@
     <string name="context_compact_prompt">Compact prompt</string>
     <string name="context_compact_prompt_desc">Summary instructions</string>
     <string name="context_compact_select_model">Select compact model</string>
+    <string name="context_compact_threshold">Automatic compact threshold</string>
+    <string name="context_compact_threshold_desc">Compact when estimated context reaches this percentage of the selected window</string>
     <string name="context_compact_retain">Recent messages to keep</string>
     <string name="context_compact_retain_desc">Mensajes conservados literalmente después de cada compactación</string>
     <string name="context_compact_manual">Compact context</string>
@@ -1122,4 +1131,7 @@
     <string name="developer_options_export_desc">Comparte un paquete JSON limitado. El contenido sensible se oculta y el archivo nunca se sube automáticamente.</string>
     <string name="developer_options_export_share_title">Compartir paquete de diagnóstico de Agora</string>
     <string name="developer_options_export_failed">No se pudo crear el paquete de diagnóstico.</string>
+    <string name="responses_api">Responses API</string>
+    <string name="responses_api_desc">Usar el endpoint /responses del proveedor en lugar de Chat Completions.</string>
+    <string name="context_compact_failed">Compact failed</string>
 </resources>

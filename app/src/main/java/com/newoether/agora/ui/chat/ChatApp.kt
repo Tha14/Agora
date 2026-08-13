@@ -45,7 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.newoether.agora.R
-import com.newoether.agora.data.isOpenAiProtocolProvider
+import com.newoether.agora.TopLevelPresentation
 import com.newoether.agora.util.gradientBlur
 import com.newoether.agora.model.ContextBudget
 import com.newoether.agora.ui.chat.bottombar.CHAT_BOTTOM_BAR_OUTER_SHAPE
@@ -59,7 +59,6 @@ import com.newoether.agora.ui.common.LocalAgoraHaptics
 import com.newoether.agora.ui.common.rememberAgoraHaptics
 import com.newoether.agora.ui.motion.LocalAgoraMotionPolicy
 import com.newoether.agora.ui.motion.openWithMotionPolicy
-import com.newoether.agora.model.OpenAiServiceTiers
 import com.newoether.agora.model.StableMessageList
 import com.newoether.agora.model.StableModelAliases
 import com.newoether.agora.viewmodel.AnimatedScrollDestination
@@ -86,6 +85,7 @@ fun ChatApp(
     onTogglePdfSelection: ((Int) -> Unit)? = null,
     onInitPdfSelection: ((Set<Int>) -> Unit)? = null,
     fullScreenViewerUrls: List<String>? = null,
+    topLevelPresentation: TopLevelPresentation = TopLevelPresentation.CHAT,
     onSnackbarOffsetChanged: (androidx.compose.ui.unit.Dp) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -118,6 +118,8 @@ fun ChatApp(
     val compactModel by viewModel.settings.contextCompactModel.collectAsState()
     val compactPrompt by viewModel.settings.contextCompactPrompt.collectAsState()
     val compactRetainCount by viewModel.settings.contextCompactRetainCount.collectAsState()
+    val compactThresholdPercent by
+        viewModel.settings.contextCompactThresholdPercent.collectAsState()
     val manualCompactDialogVisible = rememberSaveable { mutableStateOf(false) }
     val dialogState = rememberChatAppDialogState(manualCompactDialogVisible)
     val queuedSends by viewModel.queuedSends.collectAsState()
@@ -127,7 +129,7 @@ fun ChatApp(
     val loadedMessagesConversationId by viewModel.loadedMessagesConversationId.collectAsState()
     val currentLoop by viewModel.currentLoop.collectAsState()
     val runningLoopIds by viewModel.runningLoopConversationIds.collectAsState()
-    val generatingInConversationId by viewModel.generatingInConversationId.collectAsState()
+    val generationSnapshot by viewModel.generationSnapshot.collectAsState()
     val selectedModel by viewModel.currentActiveModel.collectAsState()
     val enabledModels by viewModel.settings.enabledModels.collectAsState()
     val modelAliases by viewModel.settings.modelAliases.collectAsState()
@@ -146,9 +148,8 @@ fun ChatApp(
     val globalThinkingLevel by viewModel.settings.thinkingLevel.collectAsState()
     val globalThinkingBudgetEnabled by viewModel.settings.thinkingBudgetEnabled.collectAsState()
     val globalThinkingBudgetTokens by viewModel.settings.thinkingBudgetTokens.collectAsState()
-    val globalOpenAiServiceTierEnabled by viewModel.settings.openAiServiceTierEnabled.collectAsState()
-    val globalOpenAiServiceTier by viewModel.settings.openAiServiceTier.collectAsState()
     val customProviders by viewModel.settings.customProviders.collectAsState()
+    val openAiResponsesApiEnabled by viewModel.settings.openAiResponsesApiEnabled.collectAsState()
     val globalWebSearch by viewModel.settings.webSearchEnabled.collectAsState()
     val webSearchApiKeys by viewModel.settings.webSearchApiKeys.collectAsState()
     val globalShell by viewModel.settings.shellEnabled.collectAsState()
@@ -157,6 +158,7 @@ fun ChatApp(
     val thinkingSegmentDisplayMode by viewModel.settings.thinkingSegmentDisplayMode.collectAsState()
     val autoExpandActiveGroup by viewModel.settings.autoExpandActiveGroup.collectAsState()
     val detailedTokenUsage by viewModel.settings.detailedTokenUsage.collectAsState()
+    val parseInlineDollarMath by viewModel.settings.parseInlineDollarMath.collectAsState()
     val conversationSettings by viewModel.settings.conversationSettings.collectAsState()
     val pendingSettings by viewModel.pendingConversationSettings.collectAsState()
     // Resolved per-conversation values: override → global default
@@ -168,13 +170,14 @@ fun ChatApp(
     val thinkingLevel = convOverride?.thinkingLevel ?: globalThinkingLevel
     val thinkingBudgetEnabled = convOverride?.thinkingBudgetEnabled ?: globalThinkingBudgetEnabled
     val thinkingBudgetTokens = convOverride?.thinkingBudgetTokens ?: globalThinkingBudgetTokens
-    val openAiServiceTierEnabled =
-        convOverride?.openAiServiceTierEnabled ?: globalOpenAiServiceTierEnabled
-    val openAiServiceTier = OpenAiServiceTiers.normalize(
-        convOverride?.openAiServiceTier ?: globalOpenAiServiceTier,
-    )
     val selectedProviderName = viewModel.getProviderForModel(selectedModel)
-    val openAiServiceTierAvailable = isOpenAiProtocolProvider(selectedProviderName, customProviders)
+    val openAiServiceTierState = openAiConversationServiceTierState(
+        viewModel, convOverride, selectedProviderName, customProviders,
+    )
+    val openAiWebSearchAvailable = resolveOpenAiNativeSearchAvailability(
+        selectedProviderName, openAiResponsesApiEnabled, customProviders,
+    )
+    val openAiWebSearchEnabled = convOverride?.openAiWebSearchEnabled ?: true
     // Web Search and Shell: global switch OFF → always false, regardless of override
     val webSearchEnabled = globalWebSearch && (convOverride?.webSearchEnabled ?: true)
     val shellEnabled = globalShell && (convOverride?.shellEnabled ?: true)
@@ -195,7 +198,6 @@ fun ChatApp(
     // haptics there gives every accepted send exactly one confirm(), independent of which path
     // triggered it or which scroll policy applies.
     SendAcceptedHapticBindingEffect(viewModel, haptics)
-
 
     var isExpanded by remember { mutableStateOf(false) }
     // Composer-expand spacer collapse (44dp → 0). An Animatable driven from an effect replaces the
@@ -339,10 +341,9 @@ fun ChatApp(
     )
 
     AnsweringHapticEffect(
-        messages = messagesState,
-        isLoading = isLoading,
-        generatingInConversationId = generatingInConversationId,
+        generationSnapshot = generationSnapshot,
         currentConversationId = currentConversationId,
+        topLevelPresentation = topLevelPresentation,
         hapticsEnabled = hapticsEnabled,
         haptics = haptics,
     )
@@ -566,6 +567,7 @@ fun ChatApp(
                                 thinkingSegmentDisplayMode = thinkingSegmentDisplayMode,
                                 autoExpandActiveGroup = autoExpandActiveGroup,
                                 detailedTokenUsage = detailedTokenUsage,
+                                parseInlineDollarMath = parseInlineDollarMath,
                                 contextRetainedMessageIds = contextProjection.retainedMessageIds,
                                 modelAliases = StableModelAliases(modelAliases),
                                 customProviders = customProviders,
@@ -909,27 +911,20 @@ fun ChatApp(
                         thinkingLevel = thinkingLevel,
                         thinkingBudgetEnabled = thinkingBudgetEnabled,
                         thinkingBudgetTokens = thinkingBudgetTokens,
-                        openAiServiceTierAvailable = openAiServiceTierAvailable,
-                        openAiServiceTierEnabled = openAiServiceTierEnabled,
-                        openAiServiceTier = openAiServiceTier,
+                        openAiWebSearchAvailable = openAiWebSearchAvailable,
+                        openAiWebSearchEnabled = openAiWebSearchEnabled,
+                        onOpenAiWebSearchToggle = { enabled -> updateOpenAiNativeSearch(viewModel, currentConversationId, haptics, enabled) },
+                        openAiServiceTierAvailable = openAiServiceTierState.available,
+                        openAiServiceTierEnabled = openAiServiceTierState.enabled,
+                        openAiServiceTier = openAiServiceTierState.tier,
+                        onOpenAiServiceTierToggle = { enabled -> updateOpenAiConversationServiceTierEnabled(viewModel, currentConversationId, haptics, enabled) },
+                        onOpenAiServiceTierChange = { tier -> updateOpenAiConversationServiceTier(viewModel, currentConversationId, haptics, tier) },
                         onCodeExecutionToggle = { enabled -> haptics.toggle(enabled); viewModel.updateConversationSetting(currentConversationId) { it.copy(codeExecutionEnabled = enabled) } },
                         onGoogleSearchToggle = { enabled -> haptics.toggle(enabled); viewModel.updateConversationSetting(currentConversationId) { it.copy(googleSearchEnabled = enabled) } },
                         onThinkingToggle = { enabled -> haptics.toggle(enabled); viewModel.updateConversationSetting(currentConversationId) { it.copy(thinkingEnabled = enabled) } },
                         onThinkingLevelChange = { level -> viewModel.updateConversationSetting(currentConversationId) { it.copy(thinkingLevel = level) } },
                         onThinkingBudgetEnabledChange = { enabled -> haptics.toggle(enabled); viewModel.updateConversationSetting(currentConversationId) { it.copy(thinkingBudgetEnabled = enabled) } },
                         onThinkingBudgetTokensChange = { tokens -> viewModel.updateConversationSetting(currentConversationId) { it.copy(thinkingBudgetTokens = tokens) } },
-                        onOpenAiServiceTierToggle = { enabled ->
-                            haptics.toggle(enabled)
-                            viewModel.updateConversationSetting(currentConversationId) {
-                                it.copy(openAiServiceTierEnabled = enabled)
-                            }
-                        },
-                        onOpenAiServiceTierChange = { tier ->
-                            haptics.selection()
-                            viewModel.updateConversationSetting(currentConversationId) {
-                                it.copy(openAiServiceTier = OpenAiServiceTiers.normalize(tier))
-                            }
-                        },
                         webSearchEnabled = webSearchEnabled,
                         onWebSearchToggle = { enabled -> haptics.toggle(enabled); viewModel.updateConversationSetting(currentConversationId) { it.copy(webSearchEnabled = enabled) } },
                         shellEnabled = shellEnabled,
@@ -964,6 +959,7 @@ fun ChatApp(
                         compactDefaultRetainCount = compactRetainCount,
                         contextEstimatedTokens = contextUsage.estimatedTokenCount,
                         contextTokenBudget = contextUsage.tokenBudget,
+                        contextCompactThresholdPercent = compactThresholdPercent,
                         canCompact = currentConversationId != null && !isLoading && !isSwitching && !isStopping,
                         onCompactClick = {
                             dialogState.showManualCompact()

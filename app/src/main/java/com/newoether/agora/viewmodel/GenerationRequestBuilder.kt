@@ -7,6 +7,7 @@ import com.newoether.agora.data.MemoryManager
 import com.newoether.agora.data.PredefinedVariables
 import com.newoether.agora.data.SystemPromptEntry
 import com.newoether.agora.data.isOpenAiProtocolProvider
+import com.newoether.agora.data.isResponsesApiEnabledForProvider
 import com.newoether.agora.data.local.ChatEntity
 import com.newoether.agora.data.repository.ConversationRepository
 import com.newoether.agora.data.repository.SettingsRepository
@@ -104,6 +105,7 @@ class GenerationRequestBuilder(
             presencePenalty = overrides.presencePenalty ?: settings.defaultPresencePenalty.value,
             codeExecutionEnabled = overrides.codeExecutionEnabled ?: settings.codeExecutionEnabled.value,
             googleSearchEnabled = overrides.googleSearchEnabled ?: settings.googleSearchEnabled.value,
+            openAiWebSearchEnabled = overrides.openAiWebSearchEnabled ?: true,
             thinkingEnabled = overrides.thinkingEnabled ?: settings.thinkingEnabled.value,
             thinkingLevel = overrides.thinkingLevel ?: settings.thinkingLevel.value,
             thinkingBudgetEnabled = overrides.thinkingBudgetEnabled ?: settings.thinkingBudgetEnabled.value,
@@ -162,6 +164,7 @@ class GenerationRequestBuilder(
         }
         val automaticCompact = AutomaticCompactConfig(
             enabled = settings.contextCompactEnabled.value,
+            thresholdPercent = settings.contextCompactThresholdPercent.value,
             request = CompactRequest(
                 model = compactModel,
                 prompt = settings.contextCompactPrompt.value,
@@ -170,6 +173,11 @@ class GenerationRequestBuilder(
             providerName = compactProviderName,
             apiKey = compactKey,
             baseUrl = providerRegistry.getEffectiveBaseUrl(compactProviderName),
+            responsesApiEnabled = isResponsesApiEnabledForProvider(
+                providerName = compactProviderName,
+                builtInOpenAiEnabled = settings.openAiResponsesApiEnabled.value,
+                customProviders = settings.customProviders.value,
+            ),
             provider = providerInstances[compactProviderName],
             configured = providerRegistry.isConfigured(compactProviderName, compactKey),
             generationContext = context.copy(
@@ -279,6 +287,17 @@ class GenerationRequestBuilder(
                     isOpenAiProtocolProvider(providerName, settings.customProviders.value),
                 value = effectiveSettings.openAiServiceTier,
             ),
+            responsesApiEnabled = isResponsesApiEnabledForProvider(
+                providerName = providerName,
+                builtInOpenAiEnabled = settings.openAiResponsesApiEnabled.value,
+                customProviders = settings.customProviders.value,
+            ),
+            openAiWebSearchEnabled = effectiveSettings.openAiWebSearchEnabled == true &&
+                isResponsesApiEnabledForProvider(
+                    providerName = providerName,
+                    builtInOpenAiEnabled = settings.openAiResponsesApiEnabled.value,
+                    customProviders = settings.customProviders.value,
+                ),
             baseUrl = providerRegistry.getEffectiveBaseUrl(providerName),
             userPrepend = resolvedUserPrepend,
             userPostpend = resolvedUserPostpend,

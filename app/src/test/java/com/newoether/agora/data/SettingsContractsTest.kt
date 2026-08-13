@@ -12,6 +12,24 @@ class SettingsContractsTest {
     }
 
     @Test
+    fun contextCompactRetainsNoRecentMessagesByDefault() {
+        assertEquals(0, DEFAULT_CONTEXT_COMPACT_RETAIN_COUNT)
+    }
+
+    @Test
+    fun contextCompactThresholdDefaultsToNinetyPercent() {
+        assertEquals(90, DEFAULT_CONTEXT_COMPACT_THRESHOLD_PERCENT)
+        assertEquals(50..100, CONTEXT_COMPACT_THRESHOLD_PERCENT_RANGE)
+    }
+
+    @Test
+    fun defaultContextCompactPromptPreservesConversationLanguages() {
+        val prompt = BuiltInPrompts.CONTEXT_COMPACT_SYSTEM.lowercase()
+        assertTrue(prompt.contains("same language"))
+        assertTrue(prompt.contains("do not translate"))
+    }
+
+    @Test
     fun legacyPromptContentResolvesToOneCustomSystemItem() {
         val prompt = SystemPromptEntry(
             title = "Legacy",
@@ -42,6 +60,16 @@ class SettingsContractsTest {
     @Test
     fun conversationSettingsReportsWhetherAnyOverrideExists() {
         assertTrue(ConversationSettings().isAllNull())
+        assertFalse(ConversationSettings(openAiWebSearchEnabled = false).isAllNull())
         assertFalse(ConversationSettings(shellEnabled = false).isAllNull())
+    }
+    @Test
+    fun legacyOpenAiGenericSearchProviderAndCredentialRemainAddressable() {
+        val apiKeys = mapOf("openai" to "retained-test-key")
+
+        assertEquals("openai", normalizeWebSearchProvider(" OpenAI "))
+        assertEquals("retained-test-key", apiKeys[normalizeWebSearchProvider("openai")])
+        assertEquals("duckduckgo", normalizeWebSearchProvider(" unknown "))
+        assertEquals("kagi", normalizeWebSearchProvider(" KAGI "))
     }
 }
