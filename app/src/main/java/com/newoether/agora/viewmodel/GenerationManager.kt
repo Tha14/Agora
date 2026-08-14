@@ -4,7 +4,9 @@ import android.app.Application
 import com.newoether.agora.util.DebugLog
 import com.newoether.agora.api.LlmProvider
 import com.newoether.agora.api.StreamEvent
+import com.newoether.agora.data.CustomProviderConfig
 import com.newoether.agora.data.MemoryManager
+import com.newoether.agora.data.replaceCustomProviderIdsForDisplay
 
 import com.newoether.agora.data.local.MessageEntity
 import com.newoether.agora.model.ChatMessage
@@ -36,6 +38,7 @@ class GenerationManager(
     private val context: android.content.Context,
     private val sandboxFactory: com.newoether.agora.sandbox.SandboxManagerFactory? = null,
     additionalToolProviders: List<ToolProvider> = emptyList(),
+    private val customProviders: () -> List<CustomProviderConfig> = { emptyList() },
 ) {
     var onMessagePersisted: ((messageId: String, text: String) -> Unit)? = null
 
@@ -62,7 +65,11 @@ class GenerationManager(
         isAppInForeground = { AppForegroundTracker.isInForeground },
         releaseForegroundLease = AgoraForegroundService::release,
         notify = { text, conversationId ->
-            AgoraForegroundService.showCompletionNotification(app, text, conversationId)
+            AgoraForegroundService.showCompletionNotification(
+                app,
+                replaceCustomProviderIdsForDisplay(text, customProviders()),
+                conversationId,
+            )
         },
     )
 
@@ -86,7 +93,11 @@ class GenerationManager(
     ): Int = ContextTokenEstimator.estimateFixed(
         systemPrompt = config.effectiveSystemPrompt,
         tools = toolExecutor.definitions(context),
+        initialUserPrompt = config.initialUserPrompt,
     )
+
+    internal suspend fun buildApiPath(request: GenerationApiPathRequest): GenerationApiPath =
+        apiPathBuilder.build(request)
 
     internal suspend fun generate(
         conversationId: String,
@@ -410,6 +421,20 @@ class GenerationManager(
                         currentStatus = MessageStatus.ERROR
                         generationErrorMessage = event.message
                     }
+                    is StreamEvent.HostedToolCallUpdate -> {
+                        if (!toolOverlay.hasStream(event.streamKey)) {
+                            flushAnswerSegment()
+                            flushThoughtSegment()
+                        }
+                        val created = toolOverlay.upsertHosted(event)
+                        currentStatus = MessageStatus.TOOL_CALLING
+                        retryText = null
+                        val now = System.currentTimeMillis()
+                        if (created || event.result != null || uiUpdateGate.isDue(now)) {
+                            publishStreamUpdate(forceCheckpoint = created || event.result != null)
+                            uiUpdateGate.recordPublished(now)
+                        }
+                    }
                     is StreamEvent.ToolCallUpdate -> {
                         val created = upsertStreamingToolSegment(
                             streamKey = event.streamKey,
@@ -532,6 +557,7 @@ class GenerationManager(
                 includeImages = providerConfig.includeImages,
                 userPrepend = config.userPrepend,
                 userPostpend = config.userPostpend,
+                initialUserPrompt = config.initialUserPrompt,
             )
             requestTrace?.mark("provider_dispatch")
             acceptProviderPass(collectProviderRequest(apiPath) {
@@ -644,6 +670,11 @@ class GenerationManager(
                     MessageStatus.SUCCESS
                 } else MessageStatus.ERROR
             }
+            generationErrorMessage = terminalGenerationErrorMessage(
+                status = currentStatus,
+                currentError = generationErrorMessage,
+                fallbackError = context.getString(R.string.failed_to_generate),
+            )
             if (generationJob?.isCancelled == true && currentStatus != MessageStatus.ERROR) {
                 currentStatus = MessageStatus.STOPPED
             }
@@ -684,7 +715,7 @@ class GenerationManager(
                         thoughtTiming.finishCurrent()
                         // Bound the row's toolCallJson aggregate (#51) and the unbounded answer
                         // text column — together they can exceed the 2MB CursorWindow otherwise.
-                        val finalMessage = GenerationFinalSnapshot(
+                        val generatedMessage = GenerationFinalSnapshot(
                             messageId = modelMessageId,
                             parentId = parentId,
                             text = totalText,
@@ -707,6 +738,9 @@ class GenerationManager(
                             runId = runId,
                             runSequence = modelRunSequence,
                         ).toMessage()
+                        val finalMessage = generatedMessage.withBoundedFinalTextTransform(
+                            callbacks.transformFinalText,
+                        )
                         val terminalDisposition = generationTerminalDisposition(
                             messageStatus = currentStatus,
                             hasPendingGuidance =

@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.newoether.agora.R
+import com.newoether.agora.data.replaceCustomProviderIdsForDisplay
 import com.newoether.agora.ui.chat.search.DrawerSearchBar
 import com.newoether.agora.ui.chat.search.SearchResultItem
 import com.newoether.agora.ui.chat.search.rememberDrawerSearchState
@@ -137,6 +138,7 @@ internal fun ChatDrawerContent(
     val isSwitching by viewModel.isSwitching.collectAsState()
     val generatingConversationIds by viewModel.generatingConversationIds.collectAsState()
     val runningTaskIds by viewModel.runningTaskIds.collectAsState()
+    val customProviders by viewModel.settings.customProviders.collectAsState()
 
     ModalDrawerSheet(
         drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
@@ -284,6 +286,7 @@ internal fun ChatDrawerContent(
                             messages = entries.map { it.first },
                             score = bestScore,
                             query = search.query,
+                            customProviders = customProviders,
                             onClick = {
                                 viewModel.selectConversation(convId)
                                 scope.launch { drawerState.closeWithMotionPolicy(motionPolicy) }
@@ -352,7 +355,10 @@ internal fun ChatDrawerContent(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        text = conversation.title,
+                                        text = replaceCustomProviderIdsForDisplay(
+                                            conversation.title,
+                                            customProviders,
+                                        ),
                                         modifier = Modifier.weight(1f),
                                         maxLines = 1,
                                         style = MaterialTheme.typography.bodyLarge,
