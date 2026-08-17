@@ -192,6 +192,13 @@ durable message identity and cannot become a parallel message graph.
 - Repair only selections and dedicated Run ancestry necessary to keep surviving graphs valid.
 - Surviving messages are still grouped by the global Run contract; deletion cannot merge Runs.
 
+For ordinary structural message-branch deletion, selected-message and selected-Run repair use the
+same sibling order. If the selected branch is deleted, choose the immediate surviving later sibling
+first, fall back to the immediate surviving earlier sibling only when no later sibling exists, and
+remove the selection when neither exists. Message and Run selections must not diverge. This ordering
+rule does not broaden the deleted subtree, change synthetic-row filtering, or move transaction/file
+cleanup ownership.
+
 ### 8.5 Tool-result continuation priority
 
 After a durable tool result:
@@ -211,31 +218,42 @@ failure; only a later explicit user action may resume ordinary queue admission.
 
 Compact may own a capsule renderer, message label/menu, haptic exclusion, and stable presentation.
 Its outer row height/padding and internal icon/text/action slots must remain stable across
-SENDING/THINKING/terminal/error transitions. UI specialization cannot redefine generation or
-context contracts.
+SENDING/THINKING/terminal/error transitions. The capsule Row uses a 14 dp start inset and a tighter
+7 dp end inset so the 32 dp overflow-action touch target remains visually balanced; its 18 dp icon,
+leading spacing, minimum height, menu behavior, and action enablement remain unchanged. UI
+specialization cannot redefine generation or context contracts.
 
 When the Compact detail Bottom Sheet is open and the ordinary durable message is
-SENDING/answering with no real Markdown output, it shows exactly `Context compacting...` in the
-Material primary color. The placeholder enters and leaves with fade animations. Its shared
+SENDING/answering with no real Markdown output, it shows the localized equivalent of
+`Context compacting...` in the Material primary color. The placeholder enters and leaves with fade animations. Its shared
 empty-stream rendering receives an 8 dp internal top inset so the status line does not crowd the
 Bottom Sheet divider. As soon as real output exists, the placeholder fades out and the body renders
 normally.
 
 A terminal Compact error remains visible in both locations:
 
-- the detail Bottom Sheet places the shared ordinary generation error bar beside the Markdown body;
-- the capsule animates to the same theme-derived error palette as the shared error bar without
-  changing its bounds and shows an error icon plus exactly `Compact error`. Its container uses the
-  error bar's `errorContainer` alpha, its icon uses `error`, and its text uses the error bar's
-  alpha-adjusted `error`; saturated hard-coded red or a different error token is forbidden.
+- the detail Bottom Sheet places the shared neutral-gray generation error bar beside the Markdown
+  body;
+- the capsule retains its existing theme-derived error palette independently of the neutral terminal
+  bar, without changing its bounds, and shows an error icon plus the localized equivalent of
+  `Compact error`. Its container uses `errorContainer`, its icon uses `error`, and its text uses alpha-adjusted
+  `error`; saturated hard-coded red or a different error token is forbidden.
 
 A stopped Compact is a non-error terminal presentation. Its capsule keeps the same stable bounds,
-shows a stopped icon plus exactly `Compact stopped`, and emits no Snackbar. A failed Compact may
-emit only the persisted ordinary generation error segment; generated answer/summary text is never
-an error channel. Missing error detail uses a fixed short fallback.
+shows a stopped icon plus the localized equivalent of `Compact stopped`, and emits no Snackbar. A
+failed Compact may emit only the persisted ordinary generation error segment; generated answer/summary text is never
+an error channel. Missing error detail uses a localized short fallback.
 
-Both presentations derive from the ordinary durable message status/error fields. They do not own a
-Compact state machine or infer failure from missing text.
+All app-owned Compact settings, delete/recompact actions, boundary messages, streaming/status chrome,
+and known preflight/launch failure reasons must resolve through Android resources in the current
+locale. Domain owners carry a semantic `CompactFailureReason`, an optional nonblank external detail,
+and the affected message identity; they do not manufacture user-facing English. One narrow
+presentation resolver is shared by the manual and automatic UI consumers. Nonblank Provider or
+persisted error detail remains verbatim diagnostic content and is never translated. Internal
+invariant/debug exceptions are not user-visible resources.
+
+Both terminal presentations derive from the ordinary durable message status/error fields. They do
+not own a Compact state machine or infer failure from missing text.
 
 ### 8.7 Shared streaming Markdown UI
 
@@ -252,10 +270,224 @@ a caller must not disable that fade merely to hide a surrounding answering-tail 
 message list may own that separate dot, while Thinking and Compact Bottom Sheets omit it without
 changing Markdown rendering. Typography or placeholder differences must remain parameterized.
 
-The red generation error bar is not Markdown syntax or renderer state. It is one stateless shared UI
-component, not a domain/state object. The ordinary answer body and detail Bottom Sheets render this
-same component beside the shared Markdown implementation, driven by the existing error value. It
-must not subscribe to, translate, or own generation lifecycle state.
+Finalized Thinking Bottom Sheet Markdown is selectable in every rendering branch, including the
+virtualized single-segment long-document path. Selection uses the shared no-auto-scroll selection
+host so dragging handles never repositions the conversation. Active streaming content remains
+non-selectable; once that same renderer reaches terminal state, selection is enabled without
+switching Markdown implementations or disabling virtualization.
+
+Generation terminal presentation is not Markdown syntax or renderer state. One stateless shared text
+component renders the ordinary answer and detail-sheet error beside the shared Markdown
+implementation. It does not subscribe to or own generation lifecycle state.
+
+Typed `GenerationError` remains the domain boundary. Before chat generation or transcription
+persists a display error, one Android-resource-backed presenter resolves app-owned categories and
+known transport reasons in the current locale. Authentication, rate limit, server/network wrappers,
+SSE parse, incomplete stream, output truncation, request validation, cancellation, timeout,
+unexpected-error fallback, and tool/transcription/embedding wrappers are resource owned in every
+supported locale. Exact common transport details such as connection closed/refused/reset, unknown
+host, and TLS failure are matched case-insensitively and localized. Nonblank Provider/API/server/OS
+diagnostic detail remains verbatim inside the localized wrapper unless it is plain prose whose first
+lowercase Unicode letter can be title-cased safely; codes, URLs, JSON, and identifiers are not
+rewritten. A narrow render-time compatibility normalizer applies the same known-phrase and safe
+sentence-case rules to already-persisted strings without mutating Room data. For display only, a
+JSON object may contribute one nonblank human-readable detail in the strict order nested
+`error.message`, top-level `message`, then top-level `reason`; JSON escapes are decoded and
+duplicate envelope fields are omitted. Malformed JSON, non-object JSON, or an object without one of
+those supported string fields remains verbatim. This display extraction never changes persisted or
+Provider-facing text.
+
+A normal durable MODEL row ending in ERROR or STOPPED remains that exact assistant turn in every
+later Provider request. API-only canonicalization preserves its nonblank partial answer first and
+appends one terminal annotation to the same assistant text. ERROR then appends the exact last
+nonblank persisted `error` segment, without localization, JSON extraction, sentence casing,
+truncation, or other rewriting; only legacy error-only rows without an error segment may use their
+stored text as the detail. STOPPED appends its stopped annotation even when no partial answer exists.
+The API projection normalizes only its transient status to prevent duplicate projection; it never
+changes Room. It must not change either terminal row to USER, prepend it to a later user message, or
+drop the concrete error. Synthetic tool/result rows and Compact rows retain their dedicated
+protocol and terminal contracts.
+
+Ordinary assistant messages render no general-purpose status row. Sending, Thinking, answering,
+terminal success/token usage, stopped, and failed labels must not restore that variable-height legacy
+row. Its historical position above all Thinking/tool/answer content instead retains exactly one empty,
+status-independent 8 dp vertical spacer. This is a fixed height, not a minimum-height threshold, and it
+never hosts or alters the current below-Thinking pre-output/Retry activity.
+Generation ERROR and STOPPED render text only: no Surface/background, rounded outline, Info icon,
+icon gap, or inner container padding. Both use the exact Retry label tokens, `ChatType.body` and
+`onSurfaceVariant` at 0.55 alpha, but neither uses Retry's grapheme entrance or active white dot.
+ERROR remains full-line, multiline, and selectable with its nonblank detail; STOPPED remains a
+localized content-width label. Their existing contextual outer vertical separation remains, and
+their durable ERROR versus STOPPED semantics stay distinct. Compact capsule error/stopped chrome is
+independent and unchanged.
+
+Generation activity uses one direct, layout-owned white dot at the currently active slot.
+No transparent source marker, visual clone, source registry, coordinate follower, match-parent overlay,
+or dot-specific z layer participates. The pre-output and Retry slot remains after visible
+Thought/Tool/Transcription presentation and before answer Markdown; the answer-tail slot remains
+after answer content. Their existing visibility predicates are mutually exclusive, so only the
+active slot draws the shared dot.
+
+Pre-output keeps the exact 11 dp dot. A no-Answer transition to visible
+Thought/Tool/Transcription content or terminal disappearance retains the last non-hidden inline mode
+through its unchanged 320 ms exit. Visible Answer activation is instead an immediate direct-source
+handoff: the pre-output/Retry host releases layout and stops drawing in that frame, and the answer-tail
+dot is the only source from its first frame at the final anchor. The outgoing inline Row must never
+temporarily inflate message height beneath a newly visible Answer. Retry keeps the localized label,
+8 dp gap, measured caret placement, and direct render-layer translation of that same dot. The answer
+tail keeps its fixed
+anchor height and lift and directly owns its established 400 ms entrance and 320 ms exit fade/scale.
+Each direct source owns its own opacity, breathing, size, and lifecycle. Direct activity and tail
+exit paths retain their content through zero alpha with explicit transition state; they do not use
+`AnimatedVisibility`. Their two alpha-bearing graphics layers use
+`CompositingStrategy.ModulateAlpha`, never default `Auto` or `Offscreen`, so exit opacity cannot
+rasterize the 1.30x breathing circle into tight rectangular layout bounds. Every graphics layer on
+the direct-dot path sets `clip = false`. The dot never uses `animateContentSize`, expand/shrink
+layout animation, a halo, inflated bounds, coordinate conversion, Euler integration, or retained
+follower velocity. Reduced Motion removes only spatial
+scale movement while preserving direct placement and the continuous-motion policy still owns
+breathing.
+
+Retry still fades its label in by Unicode grapheme at 27 ms per grapheme, bounded to
+225-600 ms, with the fast-start, slow-finish `LinearOutSlowInEasing` curve. The entrance plays only
+once for one fresh retry-indicator composition. Attempt/label updates inside that episode show the
+complete new label without replaying text entrance. Leaving and later re-entering Retry may create a
+fresh label-reveal composition. Reduced Motion shows the complete label immediately; the directly
+rendered dot keeps the ordinary continuous-motion breathing policy. The label remains ordinary
+Markdown body size and semi-transparent gray, and Retry presentation never owns scrolling or
+attachment state.
+
+The compact Thinking card is content-width and left-aligned while collapsed, and fills the available
+message width while expanded. Its shell extends exactly 4 dp into both sides of the message list's
+8 dp content inset, producing symmetric 4 dp screen-side margins in the expanded state. The collapsed
+state retains content width and the same 4 dp left edge. One shared start-anchored horizontal-overflow
+host must keep the outer message layout at normal width while measuring the inner card shell with
+unbounded horizontal constraints. Merely calculating parent width plus 8 dp and applying preferred
+`width` or `requiredWidth` directly under a bounded parent is invalid because coercion/centering can
+discard or displace the right extension. This external-only rule must not change header or segment
+content padding. It must not use card-level `animateContentSize`: an explicit
+400 ms width-only transition matches the existing 400 ms vertical expansion/collapse and animates
+between the measured localized header width plus a 12 dp anti-ellipsis allowance and the extended
+parent maximum width with a fast-start, slow-finish `LinearOutSlowInEasing` curve. The collapsed
+target remains capped by the available width. The animated width belongs only to the card shell:
+leading header content and expanded content retain a stable target layout width, remain anchored at
+`Alignment.TopStart`, and are clipped/revealed by the shell instead of being squeezed, reflowed, or
+centered at intermediate widths. Reduced Motion snaps spatial width.
+
+The header uses an 18 dp corner radius, restored 12 dp start by 10 dp vertical padding, an 18 dp icon
+slot, an 8 dp icon-title gap, and the accepted local 13 sp / 22 sp SemiBold title. Expanded Thought
+and Tool rows use the restored exact 10 dp horizontal content padding. The title row reserves one
+exact 4 dp title-to-arrow gap plus the unchanged 26 dp trailing disclosure reservation. The same single 18 dp
+`KeyboardArrowDown` is a Surface-local overlay, outside the unbounded/clipped content Row, so its
+layout box tracks the visible animated shell's end edge with an exact 8 dp end inset at every width.
+No second disclosure exists. That single vector rotates to -90 degrees for detail-sheet navigation,
+0 degrees while inline-collapsed, and 180 degrees while inline-expanded; spatial motion animates the
+rotation and Reduced Motion snaps it. The header icon uses the shared motion-aware 18 dp slot; only
+the loading ring is 16 dp while brain, tool, image, and disclosure icons remain 18 dp. The loading
+ring appears when any Thought, Tool, or Transcription segment in that card is active during the
+ordinary message generation. Independently, while that generation is active, the current tail
+Thinking card also remains loading when no visible answer exists below it, even after its own
+segments have settled. A historical card or a card followed by visible answer content does not gain
+loading from message-level generation. Once the owning message/Run is terminal, no persisted segment
+state may keep the card header loading: in particular, a detached `BACKGROUND_RUNNING` tool keeps
+its own tool-row background status but is terminal for card-level generation presentation.
+The indicator uses an exact 2 dp stroke. Loading, brain, tool, and image icon changes all remain
+targets of the existing Crossfade; no active/static icon change is abrupt. During an active Thought,
+only an absent/default `Thinking...` title becomes a once-per-second localized live-duration label
+based on the latest snapshot. Live and terminal duration titles share one three-tier breakdown:
+seconds below 60 seconds; minutes plus seconds below one hour; hours plus minutes plus seconds at or
+above one hour. Terminal tool-count variants use the same breakdown before their unchanged tool-count
+suffix. Provider titles and Tool/Transcription titles remain semantic. At every Provider-pass thought boundary, the runtime finishes
+authoritative thought timing and changes the in-memory live status from THINKING to SENDING before
+publishing that finished-duration snapshot. The UI ticker and Thought-active loading condition stop
+at that timing boundary; current-tail loading may continue while generation remains active until an
+answer appears below the card or generation terminalizes. Later terminal settlement must not make
+the displayed duration decrease.
+
+Answer Markdown and Thinking-segment Markdown use one presentation multiplier of exactly 1.1 for
+line height only. It applies to paragraph/body, ordered and unordered lists, tables, H1-H6,
+block/inline code, and both streaming plain-text fallbacks. Answer/Thinking Markdown font sizes and
+their source `ChatType` tokens remain unchanged; the multiplier belongs to the chat Markdown asset owner.
+
+User-message body text uses the dedicated `ChatType.userBody` token at 15 sp with an exact 24.2 sp
+line height, equal to the former 22 sp line height multiplied by 1.1. Branch navigation, the inline
+editor, and dropdown-menu typography are unchanged.
+
+A non-editing user bubble owns its action dropdown through long press. The separate action row below
+the bubble is absent; the branch selector remains independently visible. The existing Material menu
+style contains Copy, Edit, Select Text, Info, and Delete in that order and retains current availability
+rules. Selecting Edit enters that user message's existing inline editor and requests focus on its
+TextField once the edit branch is composed, so it is immediately ready for typing. This focus request
+does not select text, redefine cursor placement, force the IME through a second owner, or alter
+composer/search focus policy. Select Text reuses the existing custom Thinking detail-sheet shell with
+title `Select Text` and
+renders only the raw user message text in the shared no-auto-scroll native selection host. That
+sheet-only body copies `ChatType.userBody` with font size reduced from 15 sp to 14 sp while retaining
+the shared exact 24.2 sp line height; the user bubble itself remains 15 sp. Its raw content branch uses
+12 dp top, 24 dp horizontal, and 32 dp bottom padding so text does not crowd the header divider. It
+does not include attachments.
+
+Thinking, Select Text, and Sources share one reusable `SmoothBottomSheet` Compose shell. A small
+stable state plus `rememberSmoothBottomSheetState` owns Hidden/Partial/Expanded values; the shell
+owns the edge-to-edge Dialog/Surface, 0/0.45/0.94 anchors, 0.9 damping and 350 stiffness snap spring,
+interruption, native dim curve, scrim/back dismissal, draggable handle/header, Reduced Motion snap,
+and nested-scroll collapse driven by a caller-provided content-at-top predicate. `SegmentDetailSheet`
+owns selected-segment navigation, titles/back action, scroll/LazyList state, Markdown/tool/media,
+footer/error, and Select Text content. The Sources caller owns its dynamic title, ordered LazyList,
+list-top predicate, and pending source activation; selecting a row requests the shell's normal hide
+transition and activates that source only after dismissal completes. Extraction preserves the shared
+geometry, thresholds, motion, header/divider, and rendering. Image, settings, and composer sheets
+remain owned by `MotionAwareModalBottomSheet` and are not migrated.
+
+Ordinary Timeline mode groups each visually consecutive Thought/Tool/Transcription run with the exact
+Settings group grammar: 2 dp between surfaces; a single row uses 24 dp corners; the first uses 24 dp
+outer-top and 5 dp adjoining-bottom corners; middle rows use 5 dp corners; the last uses 5 dp
+adjoining-top and 24 dp outer-bottom corners. All four radii animate when a streamed row changes an
+existing row's group position. Each radius uses one monotonic 240 ms `FastOutSlowInEasing` tween,
+never a bouncy/overshooting spring, and is clamped to [5 dp, 24 dp] after animation; Reduced Motion
+snaps directly to the clamped target. The existing one-shot 420 ms row fade/scale entrance is
+independent and unchanged. Timeline
+Thought/Tool/Transcription cards and grouped blocks own exactly one appearance modifier on their
+actual overflow-sized Surface; a bounded outer appearance Box and a second 0.90 scale layer are
+forbidden because they clip the deliberate 4 dp overflow. Answer-block appearance ownership remains
+unchanged.
+Group position is resolved from rendered order rather than raw adjacent indices: a nonblank visible
+Answer ends the run, while blank Answer, Error, and any other non-rendered segment are transparent to
+the previous/next scan. Invalid indices fail closed as a single row. The top/bottom spacing between a
+run and surrounding answer content remains unchanged.
+Ordinary inline Timeline shells reuse the same start-anchored unbounded host and extend 4 dp into
+both sides of the message list's 8 dp inset, matching the expanded Thinking shell's symmetric
+4 dp/4 dp outer margins without changing internal padding. They must not rely on bounded-parent
+`requiredWidth` overflow. The Thinking segment bottom-sheet list uses the same shapes and 2 dp separation but retains its own
+sheet-local 20 dp horizontal inset. The shared Timeline/sheet card row uses 10 dp vertical internal
+padding, increasing both presentations without a fixed or minimum height.
+
+The top-level Thinking segment bottom-sheet title uses the same shared semantic/live title resolver as
+its compact Thinking card, including default live `Thinking for Ns...`, Provider titles, Tool/
+Transcription titles, and terminal duration summaries. A selected detail page retains its own segment
+title. Sheet-list segment surfaces use a neutral translucent gray
+`surfaceVariant.copy(alpha = 0.25f)` container with unchanged `onSurfaceVariant` text content.
+Thought, Tool, and Transcription leading icons use full `primary`; the trailing disclosure arrow
+uses neutral gray `onSurfaceVariant` at 0.5 alpha. Inline Timeline and compact Thinking palettes
+remain unchanged. The detail-page circular back button alone overrides the shared
+`CircularBackButton` container with `surfaceVariant.copy(alpha = 0.25f)`; its foreground and the
+global component defaults remain unchanged.
+
+The Thinking segment Card/Bottom Sheet setting is visible and effective only while Tool-call display
+mode is Grouped or Compact. Timeline ignores a persisted Bottom Sheet preference and retains ordinary
+inline Timeline presentation; the stored value remains untouched and becomes effective again after
+switching back to Grouped or Compact. Auto-Expand Active Group is visible and effective only for the
+exact Grouped + Card combination. One shared pure display policy owns these applicability decisions so
+Settings visibility and message rendering cannot drift. Regardless of that setting, selecting any
+ordinary Timeline card or grouped Timeline row always opens the selected segment detail directly.
+Only a Grouped/Compact card that is actually presented in Bottom Sheet mode opens the segment-list
+page first; click intent is passed explicitly and is never recomputed from the raw stored preference.
+
+Failed tool-detail content inside the shared Thinking/Tool bottom-sheet path keeps its full-width
+rounded error bar and selectable text but uses a neutral gray palette: `surfaceVariant` at 55%
+alpha with `onSurfaceVariant` content. It must not use `errorContainer` or `onErrorContainer`.
+Ordinary generation errors remain the established neutral text-only presentation. Destructive
+actions, non-sheet validation text, and unboxed image-load failures retain their own semantics.
 
 ### 8.8 Empty output and automatic handoff
 
@@ -298,19 +530,32 @@ index inserts exactly one blank line between summary parts. Bold text or a Markd
 current summary part supplies the thinking-card title with its marker removed, matching Gemini.
 Disabling thinking suppresses both the summary request and its presentation.
 
-Provider-hosted tools use display-only stream events. They may create and settle ordinary tool
-segments, but they cannot authorize local execution, enter the tool-effect reducer, or fabricate a
-tool-result continuation round. Provider semantic termination still owns whether the request
-succeeded; Stop and errors use the shared generation settlement.
-A message card with tool segments but no real `thought` segment displays only `Called x tools`.
-Message-level thought duration is a fallback only when at least one thought segment exists; it must
-not turn a tool-only card into `Thought for xs, called x tools`.
-Gemini keeps its hosted output protocol-local. Candidate `groundingMetadata` becomes a completed
-`google_search` hosted block displayed as `Google Search`, with normalized `results` for the shared
-search presentation and the full grounding metadata retained in the durable result. An
-`executableCode` part starts a `code_execution` block displayed as `Code Execution`; the matching
-`codeExecutionResult` completes that same block. Code and output are not duplicated into answer
-text. Persisted Code Execution segments replay to later Gemini requests as typed executable-code and
+Provider-hosted tools use non-executing hosted-tool stream events. They may create and settle durable
+ordinary tool segments, but they cannot authorize local execution, enter the tool-effect reducer, or
+fabricate a tool-result continuation round. Whether a durable hosted segment is presented is an
+independent UI policy. Provider semantic termination still owns whether the request succeeded; Stop
+and errors use the shared generation settlement.
+
+Structured Provider citations follow [citations.md](citations.md). Protocol routers emit structured
+citation events rather than answer `TextChunk` or tool events. The existing streaming segment
+overlay and bounded checkpoint/terminal persistence retain accepted citation segments for the
+identified Run, while Provider history and token/context projection exclude them. Citations do not
+create a second generation lifecycle, change semantic termination, or append synthetic source text
+to the durable answer.
+
+A message card with visible tool segments but no real `thought` segment displays only
+`Called x tools`. Message-level thought duration is a fallback only when at least one thought segment
+exists; it must not turn a tool-only card into `Thought for xs, called x tools`.
+Gemini keeps its hosted output protocol-local. Candidate `groundingMetadata` becomes a completed,
+durable `google_search` hosted block with normalized `results` and full grounding metadata. The shared
+UI segment-preparation boundary excludes that exact tool name from compact, grouped timeline,
+ordinary timeline, and thinking-detail presentation, so it produces neither a `Google Search` card
+nor a `Called x tools` count; generic `web_search`, OpenAI `openai_search`, and other tools remain
+visible. This presentation rule does not change request serialization, hosted-tool settlement,
+persistence, replay, citation extraction, source order, or failure behavior. An `executableCode` part
+starts a visible `code_execution` block displayed as `Code Execution`; the matching
+`codeExecutionResult` completes that same block. Code and output are not duplicated into answer text.
+Persisted Code Execution segments replay to later Gemini requests as typed executable-code and
 code-execution-result model parts in their original order. Multiple pairs remain ordered, and an
 unmatched executable-code part leaves a tool in flight so semantic termination fails closed.
 
@@ -354,6 +599,20 @@ The following are binding review blockers:
 - Capability handling should stay as the smallest direct check in the owning Provider/configuration
   path until several real features need the exact same rule. Unknown relay behavior fails closed;
   that alone does not justify a capability framework.
+
+### 8.11 Conversation share projection
+
+Every conversation-sharing mode—whole conversation, selected visible messages, and one assistant
+generation—uses one public-content formatter. The exported Markdown must omit every structured
+`thought` segment, every `tool` segment and all of its names, arguments, progress, results, images,
+and protocol metadata, legacy `MessageEntity.thoughts`, and synthetic tool/result protocol rows.
+This is a read-only projection rule: sharing never deletes, rewrites, or weakens durable history,
+Provider context, tool continuation state, or fork graph completeness.
+
+The formatter preserves the selected visible branch and established ordering, completion checks,
+conversation title, user text and attachment summaries, assistant answer and transcription content,
+and error content. Inline text versus Markdown-file transport, share selection, and Android chooser
+behavior remain transport/UI concerns and may not reintroduce private Thinking or tool payloads.
 
 ## 9. Context assembly contract in module terms
 

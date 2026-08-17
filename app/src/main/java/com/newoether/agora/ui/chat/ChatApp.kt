@@ -49,6 +49,7 @@ import com.newoether.agora.TopLevelPresentation
 import com.newoether.agora.data.forDisplay
 import com.newoether.agora.data.replaceCustomProviderIdsForDisplay
 import com.newoether.agora.util.gradientBlur
+import com.newoether.agora.util.verticalBottomOverlayFade
 import com.newoether.agora.model.ContextBudget
 import com.newoether.agora.ui.chat.bottombar.CHAT_BOTTOM_BAR_OUTER_SHAPE
 import com.newoether.agora.ui.chat.bottombar.ChatBottomBar
@@ -161,7 +162,7 @@ fun ChatApp(
     val toolCallDisplayMode by viewModel.settings.toolCallDisplayMode.collectAsState()
     val thinkingSegmentDisplayMode by viewModel.settings.thinkingSegmentDisplayMode.collectAsState()
     val autoExpandActiveGroup by viewModel.settings.autoExpandActiveGroup.collectAsState()
-    val detailedTokenUsage by viewModel.settings.detailedTokenUsage.collectAsState()
+
     val parseInlineDollarMath by viewModel.settings.parseInlineDollarMath.collectAsState()
     val conversationSettings by viewModel.settings.conversationSettings.collectAsState()
     val pendingSettings by viewModel.pendingConversationSettings.collectAsState()
@@ -176,7 +177,7 @@ fun ChatApp(
     val thinkingBudgetTokens = convOverride?.thinkingBudgetTokens ?: globalThinkingBudgetTokens
     val selectedProviderName = viewModel.getProviderForModel(selectedModel)
     val openAiServiceTierState = openAiConversationServiceTierState(
-        viewModel, convOverride, selectedProviderName, customProviders,
+        viewModel, convOverride, selectedProviderName, openAiResponsesApiEnabled, customProviders,
     )
     val openAiWebSearchAvailable = resolveOpenAiNativeSearchAvailability(
         selectedProviderName, openAiResponsesApiEnabled, customProviders,
@@ -540,7 +541,10 @@ fun ChatApp(
                                 messages = StableMessageList(renderMessagesState.value),
                                 allMessages = StableMessageList(allMessagesState.value),
                                 conversationId = currentConversationId,
-                                modifier = messageListModifier,
+                                modifier = messageListModifier.verticalBottomOverlayFade(
+                                    fadeHeightDp = 40f,
+                                    bottomOverlayHeight = bottomBarHeight + with(density) { outerSpacerHeightPx.toDp() } + 12.dp,
+                                ),
                                 state = listState,
                                 // Per-conversation generation gate: isLoading mirrors the OPEN
                                 // conversation's slot only (ConversationGenerationState.onActive
@@ -572,7 +576,7 @@ fun ChatApp(
                                 toolCallDisplayMode = toolCallDisplayMode,
                                 thinkingSegmentDisplayMode = thinkingSegmentDisplayMode,
                                 autoExpandActiveGroup = autoExpandActiveGroup,
-                                detailedTokenUsage = detailedTokenUsage,
+
                                 parseInlineDollarMath = parseInlineDollarMath,
                                 contextRetainedMessageIds = contextProjection.retainedMessageIds,
                                 modelAliases = StableModelAliases(modelAliases),
@@ -820,7 +824,7 @@ fun ChatApp(
                 }
             }
 
-            val gradientTopPaddingPx = with(density) { 20.dp.toPx() }
+            val expandedGradientTopPaddingPx = with(density) { 20.dp.toPx() }
             val gradientWidthPx = with(density) { 40.dp.toPx() }
             val bgColor = MaterialTheme.colorScheme.background
             Surface(
@@ -830,22 +834,16 @@ fun ChatApp(
                     .then(if (isExpanded) Modifier.fillMaxHeight().statusBarsPadding() else Modifier)
                     .drawBehind {
                         val totalH = size.height
-                        if (totalH > 0f) {
-                            val (transparentEnd, fadeEnd) = if (isExpanded) {
-                                // In expanded mode, keep the gradient compact at the top
-                                val h = gradientTopPaddingPx.coerceAtMost(totalH * 0.12f)
-                                val w = gradientWidthPx.coerceAtMost(totalH * 0.24f)
-                                (h / totalH) to ((h + w) / totalH)
-                            } else {
-                                val te = (gradientTopPaddingPx / totalH).coerceIn(0f, 1f)
-                                val fe = ((gradientTopPaddingPx + gradientWidthPx) / totalH).coerceIn(0f, 1f)
-                                te to fe
-                            }
+                        if (isExpanded && totalH > 0f) {
+                            val h = expandedGradientTopPaddingPx.coerceAtMost(totalH * 0.12f)
+                            val w = gradientWidthPx.coerceAtMost(totalH * 0.24f)
+                            val transparentEnd = h / totalH
+                            val fadeEnd = (h + w) / totalH
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     colorStops = arrayOf(
-                                        0.0f to Color.Transparent,
-                                        transparentEnd to Color.Transparent,
+                                        0.0f to bgColor.copy(alpha = 0f),
+                                        transparentEnd to bgColor.copy(alpha = 0f),
                                         fadeEnd to bgColor,
                                     ),
                                     startY = 0f,
@@ -857,6 +855,7 @@ fun ChatApp(
                 color = Color.Transparent
             ) {
                 Column {
+                    if (!isExpanded) Spacer(modifier = Modifier.height(12.dp))
                     if (outerSpacerHeightPx > 0f) {
                         Spacer(modifier = Modifier.height(with(density) { outerSpacerHeightPx.toDp() }))
                     }

@@ -363,7 +363,10 @@ class GenerationManager(
                 uiUpdateGate.recordPublished(System.currentTimeMillis())
             }
 
-            suspend fun handleStreamEvent(event: StreamEvent) {
+            suspend fun handleStreamEvent(
+                event: StreamEvent,
+                providerAnswerStart: Int,
+            ) {
                 requestTrace?.recordParsedEvent(event)
                 when (event) {
                     is StreamEvent.TextChunk -> {
@@ -381,6 +384,15 @@ class GenerationManager(
                             currentStatus = MessageStatus.SENDING
                         }
                         retryText = null
+                    }
+                    is StreamEvent.CitationUpdate -> {
+                        toolOverlay.upsertCitation(
+                            rebaseCitationForFinalAnswer(
+                                citation = event.citation,
+                                providerAnswerStart = providerAnswerStart,
+                                finalAnswer = totalText,
+                            ),
+                        )
                     }
                     is StreamEvent.ThoughtChunk -> {
                         flushAnswerSegment()
@@ -419,7 +431,7 @@ class GenerationManager(
                         retryText = null
                         toolOverlay.failIncompleteStreams(completedToolCalls.keys)
                         currentStatus = MessageStatus.ERROR
-                        generationErrorMessage = event.message
+                        generationErrorMessage = localizedGenerationError(context, event.error)
                     }
                     is StreamEvent.HostedToolCallUpdate -> {
                         if (!toolOverlay.hasStream(event.streamKey)) {
@@ -480,7 +492,8 @@ class GenerationManager(
                 }
 
                 val now = System.currentTimeMillis()
-                val isSignificant = event is StreamEvent.Error
+                val isSignificant =
+                    event is StreamEvent.Error || event is StreamEvent.CitationUpdate
                 if (uiUpdateGate.isDue(now) || isSignificant) {
                     publishStreamUpdate(forceCheckpoint = isSignificant)
                     uiUpdateGate.recordPublished(now)
@@ -491,6 +504,7 @@ class GenerationManager(
                 messages: List<ChatMessage>,
                 onFirstEvent: (() -> Unit)? = null,
             ): ProviderPassOutcome {
+                val providerAnswerStart = totalText.length
                 tokenUsageAccumulator.beginRequest()
                 val proposedIdentity = RunEffectIdentity(
                     conversationId = conversationId,
@@ -513,7 +527,9 @@ class GenerationManager(
                                 callbacks.onProviderPassCompleted(identity, result)
                             },
                             onFirstEvent = onFirstEvent,
-                            onEvent = ::handleStreamEvent,
+                            onEvent = { event ->
+                                handleStreamEvent(event, providerAnswerStart)
+                            },
                         ),
                     )
                 } finally {
@@ -564,6 +580,7 @@ class GenerationManager(
                 requestTrace?.mark("first_semantic_event")
             })
             thoughtTiming.finishCurrent()
+            currentStatus = statusAfterThoughtPhaseFinished(currentStatus)
             if (currentStatus != MessageStatus.ERROR) executeAcceptedToolBatch()
             // Publish the final in-memory snapshot without waiting for another Room round trip.
             // The terminal transaction below persists this exact state after fencing the
@@ -581,7 +598,7 @@ class GenerationManager(
                 val roundToolList = roundToolSegments.toList()
                 roundToolSegments.clear()
                 val thoughtSegs = toolRoundThoughtSegments(
-                    segments = toolOverlay.snapshot(),
+                    segments = toolOverlay.contentSnapshot(),
                     fromIndex = toolRoundSegmentCursor,
                 )
                 val txedSegments = if (thoughtSegs.isNotEmpty()) thoughtSegs + roundToolList else roundToolList
@@ -647,6 +664,7 @@ class GenerationManager(
                 )
                 acceptProviderPass(collectProviderRequest(apiToolPath))
                 thoughtTiming.finishCurrent()
+                currentStatus = statusAfterThoughtPhaseFinished(currentStatus)
                 if (currentStatus != MessageStatus.ERROR) executeAcceptedToolBatch()
                 // Publish the round's final UI state immediately. The next loop boundary or the
                 // terminal transaction supplies durability, so blocking here would only duplicate

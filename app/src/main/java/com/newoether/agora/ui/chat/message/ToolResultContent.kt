@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.newoether.agora.ui.motion.MotionAwareCircularProgressIndicator as CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,11 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.newoether.agora.R
+import com.newoether.agora.model.CitationPolicy
 import com.newoether.agora.model.MessageSegment
 import com.newoether.agora.model.ToolImageAttachment
 import com.newoether.agora.ui.theme.ChatType
@@ -54,75 +58,106 @@ internal fun ToolDetailContent(
     onMediaClick: (List<String>, Int) -> Unit,
 ) {
     val presentation = ToolPresentationResolver.resolve(segment)
+    val contentAlignmentModifier = if (presentation.kind == ToolKind.WEB_SEARCH) {
+        Modifier.padding(horizontal = 8.dp)
+    } else {
+        Modifier
+    }
     val args = presentation.rawArguments
     if (!args.isNullOrBlank() && args != "{}") {
-        ToolSectionLabel(stringResource(R.string.arguments_label))
-        Spacer(Modifier.height(5.dp))
-        JsonOrPlainView(args)
-        Spacer(Modifier.height(18.dp))
+        Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
+            ToolSectionLabel(stringResource(R.string.arguments_label))
+            Spacer(Modifier.height(5.dp))
+            JsonOrPlainView(args)
+            Spacer(Modifier.height(18.dp))
+        }
     }
 
     if (presentation.kind == ToolKind.MCP) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetaPill(text = "MCP", emphasized = true)
-            presentation.device
-                ?.takeIf(String::isNotBlank)
-                ?.let { MetaPill(it) }
+        Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetaPill(text = "MCP", emphasized = true)
+                presentation.device
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { MetaPill(it) }
+            }
+            Spacer(Modifier.height(18.dp))
         }
-        Spacer(Modifier.height(18.dp))
     }
 
-    ToolSectionLabel(stringResource(R.string.result_label))
-    Spacer(Modifier.height(6.dp))
-    if (segment.toolImages.isNotEmpty()) {
-        ToolImageResults(
-            images = segment.toolImages,
-            onMediaClick = onMediaClick,
-        )
-        Spacer(Modifier.height(12.dp))
+    Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
+        ToolSectionLabel(stringResource(R.string.result_label))
+        Spacer(Modifier.height(6.dp))
+        if (segment.toolImages.isNotEmpty()) {
+            ToolImageResults(
+                images = segment.toolImages,
+                onMediaClick = onMediaClick,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
     }
     if (presentation.kind == ToolKind.SHELL_EXECUTE ||
         presentation.kind == ToolKind.SHELL_JOB_GET
     ) {
-        ShellResult(presentation)
+        Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
+            ShellResult(presentation)
+        }
         return
     }
-    when (presentation.state) {
-        ToolPresentationState.CALLING -> ToolActiveContent(
-            text = toolSummary(presentation),
-            output = presentation.liveOutput,
-        )
-        ToolPresentationState.RUNNING,
-        ToolPresentationState.BACKGROUND_RUNNING -> ToolActiveContent(
-            text = toolSummary(presentation),
-            output = presentation.liveOutput ?: resultOutput(presentation.result),
-        )
-        ToolPresentationState.FAILED -> {
-            ToolErrorContent(
-                presentation.errorMessage ?: stringResource(R.string.tool_call_failed),
+    if (
+        presentation.kind == ToolKind.WEB_SEARCH &&
+        (
+            presentation.state == ToolPresentationState.EMPTY ||
+                presentation.state == ToolPresentationState.COMPLETED
             )
-            if (
-                presentation.kind == ToolKind.MCP &&
-                (
-                    !presentation.rawTextResult.isNullOrBlank() ||
-                        !presentation.rawStructuredResult.isNullOrBlank()
-                    )
-            ) {
-                Spacer(Modifier.height(10.dp))
-                McpResultContent(presentation)
+    ) {
+        ToolCompletedContent(presentation)
+        return
+    }
+    Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
+        when (presentation.state) {
+            ToolPresentationState.CALLING -> ToolActiveContent(
+                text = toolSummary(presentation),
+                output = presentation.liveOutput,
+            )
+            ToolPresentationState.RUNNING,
+            ToolPresentationState.BACKGROUND_RUNNING -> ToolActiveContent(
+                text = toolSummary(presentation),
+                output = presentation.liveOutput ?: resultOutput(presentation.result),
+            )
+            ToolPresentationState.FAILED -> {
+                ToolErrorContent(
+                    presentation.errorMessage ?: stringResource(R.string.tool_call_failed),
+                )
+                if (
+                    presentation.kind == ToolKind.MCP &&
+                    (
+                        !presentation.rawTextResult.isNullOrBlank() ||
+                            !presentation.rawStructuredResult.isNullOrBlank()
+                        )
+                ) {
+                    Spacer(Modifier.height(10.dp))
+                    McpResultContent(presentation)
+                }
+                if (!presentation.liveOutput.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    TerminalOutput(presentation.liveOutput)
+                }
             }
-            if (!presentation.liveOutput.isNullOrBlank()) {
-                Spacer(Modifier.height(8.dp))
-                TerminalOutput(presentation.liveOutput)
-            }
+            ToolPresentationState.STOPPED -> ToolMutedContent(
+                stringResource(R.string.tool_execution_stopped),
+            )
+            ToolPresentationState.EMPTY,
+            ToolPresentationState.COMPLETED -> ToolCompletedContent(presentation)
         }
-        ToolPresentationState.STOPPED -> ToolMutedContent(
-            stringResource(R.string.tool_execution_stopped),
-        )
-        ToolPresentationState.EMPTY,
-        ToolPresentationState.COMPLETED -> ToolCompletedContent(presentation)
     }
 }
+
+internal fun toolDetailHorizontalPadding(segment: MessageSegment): Dp =
+    when (ToolPresentationResolver.resolve(segment).kind) {
+        ToolKind.WEB_SEARCH -> 16.dp
+        else -> 24.dp
+    }
 
 private enum class ToolImagePreviewState {
     LOADING,
@@ -250,8 +285,8 @@ private fun ToolActiveContent(text: String, output: String?) {
 @Composable
 private fun ToolErrorContent(message: String) {
     Surface(
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -483,17 +518,22 @@ private fun FileReadResult(presentation: ToolPresentation) {
 private fun WebSearchResult(
     presentation: ToolPresentation,
 ) {
+    val uriHandler = LocalUriHandler.current
+    val resultShape = RoundedCornerShape(12.dp)
     val results = ((presentation.result as? JsonObject)?.get("results") as? JsonArray)
         .orEmpty()
     if (results.isEmpty()) {
-        ToolMutedContent(toolSummary(presentation))
+        Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+            ToolMutedContent(toolSummary(presentation))
+        }
         return
     }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column {
         results.forEachIndexed { index, value ->
             val item = value as? JsonObject
             val title = item.string("title") ?: stringResource(R.string.tool_web_result, index + 1)
             val url = item.string("url") ?: item.string("href")
+            val safeUrl = remember(url) { CitationPolicy.safeHttpUrl(url) }
             val snippet = item.string("snippet")
                 ?: item.string("description")
                 ?: item.string("content")
@@ -501,27 +541,23 @@ private fun WebSearchResult(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f),
-                        RoundedCornerShape(10.dp),
+                    .clip(resultShape)
+                    .clickable(
+                        enabled = safeUrl != null,
+                        onClick = {
+                            safeUrl?.let { destination ->
+                                runCatching { uriHandler.openUri(destination) }
+                            }
+                        },
                     )
-                    .padding(10.dp),
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
             ) {
                 Text(
                     text = title,
-                    style = ChatType.meta,
+                    style = ChatType.body,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                if (!url.isNullOrBlank()) {
-                    Text(
-                        text = url,
-                        style = ChatType.metaNormal,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
                 if (!snippet.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -530,6 +566,21 @@ private fun WebSearchResult(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (!url.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = url,
+                        style = ChatType.micro,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (index < results.lastIndex) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                )
             }
         }
     }

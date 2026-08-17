@@ -1,0 +1,176 @@
+# Application UI Contract
+
+Status: authoritative development contract, 2026-08-15.
+
+This document owns durable application-level UI behavior that is not part of message generation,
+citations, semantic search, or Web Search. Current explicit user requirements override older
+presentation code and translations.
+
+## 1. Motion ownership and accessibility
+
+Application UI motion consumes the shared Agora motion policy. Spatial press, size, and scale motion
+must snap to the stable resting presentation when Reduced Motion disables spatial transitions.
+Opacity-only transitions may remain only where their owning component contract allows them.
+
+A screen may reuse an established motion language directly without creating another global animation
+owner. Interaction state stays local to the interactive control and must not alter navigation,
+validation, persistence, or completion semantics.
+
+## 2. Onboarding primary action
+
+The onboarding Continue/Get Started action preserves its full-width role, page validation, paging,
+completion callback, enabled state, colors, and label semantics.
+
+Its press response reuses the Documentation FAB spring language with deliberately lower visual amplitude:
+
+- use one local press interaction source;
+- use spring stiffness `400f` and damping ratio `0.25f`;
+- reserve one fixed 56 dp outer-height slot so surrounding onboarding content does not jump;
+- animate horizontal inset from 32 dp at rest to 24 dp while pressed, making the full-width action
+  exactly 16 dp wider;
+- animate height from 48 dp to 50 dp and content scale from 1f to 1.02f while pressed;
+- when spatial transitions are disabled, keep 32 dp inset, 48 dp height, and 1f content scale.
+
+## 3. Settings category copy
+
+The Generation Settings category description names only its actual category content and is the direct
+localized equivalent of `LLM parameters`. It must not mention the context window. This copy change
+does not remove or relocate Context Settings, alter the Generation Settings destination, or change
+any stored generation parameter.
+
+The default resource and every supported locale must define the same key set. App-owned strings are
+localized in the current Android locale; hard-coded English must not replace resource-backed UI copy.
+
+## 4. Chat composer dropdown icon parity
+
+The chat-bottom attachment `+` dropdown and tools `...` dropdown use explicit 24 dp leading
+icons/images in every menu row, matching the Material default size used by the user-message
+long-press dropdown. Their 16 dp trigger icons remain unchanged. Menu shape, row geometry, 12 dp
+icon-label gap, labels, badges, switches, ordering, enablement, and click behavior remain unchanged.
+
+## 5. Chat bottom-bar answer fade
+
+In normal, non-expanded composer mode, the existing 40 dp vertical fade is an alpha mask on the
+conversation foreground, not a separately painted background-color cover. Its zero lead, normal-only
+12 dp host lift, measured bottom-bar height, and animated composer-expansion spacer place the mask at
+the same screen coordinates as the existing fade without moving the chat-bottom Surface or changing
+`bottomBarHeightPx`. The mask uses offscreen `DstIn` composition: conversation pixels stay opaque above
+the fade, become transparent through the 40 dp band, and remain transparent behind the composer, so
+the one actual `AnimatedBlobBackground` below is revealed pixel-for-pixel even while it moves. Normal
+mode must not sample, duplicate, freeze, or paint over that dynamic background. List/answer padding,
+IME/navigation insets, composer-expansion spacer ownership, and scroll ownership remain unchanged.
+Expanded composer mode receives no lift and retains its exact background-color cover with 20 dp
+compact-at-screen-top gradient geometry.
+
+## 6. MCP page-entry refresh
+
+Entering the MCP Settings page triggers exactly one foreground refresh request for every enabled
+server with a nonblank URL, except a server already in CONNECTING state. The page delegates through
+the ViewModel to the process-wide `McpRegistry`; it does not create another connection authority.
+Recomposition and navigation within the page's editor do not retrigger refresh. No timer, delay loop,
+WorkManager job, alarm, service, background observer, or periodic polling participates. Existing
+Settings reconciliation, snapshot StateFlow, retry backoff, manual refresh, and runtime identity
+checks remain authoritative.
+
+## 7. Localized category and Thinking-segment labels
+
+The default resource and all eleven supported locale directories define localized values for
+`context_title`, `context_desc`, `thinking_segment_display_mode`,
+`thinking_segment_display_mode_desc`, `thinking_segment_display_card`,
+`thinking_segment_display_bottom_sheet`, and `thinking_segments_title`. Localized resources must
+not retain the default English text for those keys, and placeholder sets remain identical.
+
+## 7. Appearance token-detail cleanup
+
+Appearance does not expose the obsolete Detailed token usage toggle. ChatApp, MessageList,
+MessageItem, and AssistantMessageContent do not collect or thread that unused UI value. The existing
+stored preference key and settings import/export compatibility remain readable and writable so the UI
+cleanup creates no migration or archive incompatibility.
+
+## 8. Image-transcription model chooser
+
+The primary image-transcription model chooser lists only currently enabled concrete models. It does
+not inject a synthetic `No model`/null-selection row. A previously persisted null value remains
+compatible: the settings summary may still show its existing no-model fallback, and nullable
+settings persistence/import behavior remains unchanged.
+
+## 9. Appearance Thinking-segment row order
+
+When the Thinking segment display setting is available, Appearance places it immediately below the
+Thought and Tool Blocks display setting and before Auto-Expand Active Group. Reordering must not
+change the existing Grouped/Compact availability rule, the exact Grouped + Card Auto-Expand rule, or
+any stored/effective display-mode behavior.
+
+## 10. Settings destination rows without redundant arrows
+
+Top-level Settings category cards do not render a right-arrow icon; the entire existing card remains
+the navigation target with unchanged grouping, padding, labels, descriptions, colors, and spacing.
+The Terminal page's enabled-only Manage sandbox row likewise omits only its trailing Chevron while
+preserving the row click destination and the separate Sandbox enable Switch. Provider Settings omits
+right arrows from built-in Provider rows, custom Provider rows, and Local Models. Custom Provider rows
+retain their protocol badge but omit the spacer that existed solely between that badge and its arrow.
+No destination, summary, tint, enablement, persistence, or other trailing control changes.
+
+## 11. Full-screen text-file preview typography
+
+The full-screen Markdown-file preview renders its content with the current effective App font from
+`MaterialTheme.typography`; it does not replace that font with a hard-coded mono or system family.
+Markdown body/list/table text, H1-H6, block code, and inline code preserve their current font sizes and
+use exactly 1.1 times their source line height. H1-H6 are explicitly Bold. Link text inherits the
+containing paragraph typography.
+
+The ordinary-text preview also uses the current effective App font while retaining its exact 13 sp
+font size and 20 sp line height. The already-bold filename overlay, close control, selection, scrolling,
+HTML handling, link behavior, Markdown components, content padding, and file-type routing remain
+unchanged.
+
+Every full-screen preview subtype enters and exits through one of two shared top-level transition
+hosts: the media host covers loading, single video, PDF, mixed image/video paging, and single image;
+the text host covers Markdown and ordinary text. With spatial transitions enabled, both hosts use the
+same entrance of a 220 ms fade plus a 300 ms center scale from 0.96f to 1f with
+`FastOutSlowInEasing`, and the same exit of a 180 ms fade plus a 220 ms center scale from 1f to
+0.96f with `FastOutLinearInEasing`. Reduced Motion retains only the corresponding timed fades.
+
+The hosts keep their last payload through exit and release the top-level presentation owner only after
+the transition settles. A confirmed video page alone retains the viewer-internal 400 ms player fade
+before handing off to the shared top-level exit. Image, PDF, loading, and unresolved media pages hand
+off immediately without a pager-owned delay. The mixed-media pager has no duplicate close timer or
+second `onClose` owner. Media decoding, pager navigation, gestures, payload routing, shared exit
+transitions, and Reduced Motion remain unchanged.
+
+## 12. PDF page rasterization
+
+PDF page rasterization uses the existing framework `PdfRenderer` owner for both selected pages sent
+as model attachments and all-page full-screen preview generation. Every newly allocated
+`ARGB_8888` page bitmap is initialized to opaque white before
+`PdfRenderer.Page.render` receives it. This produces a deterministic white paper background for
+PDF regions that do not paint an explicit background and prevents JPEG encoding from flattening
+transparent black pixels into a black page that hides correctly rendered black glyphs.
+
+Both consumers share one bitmap-initialization path. The change does not alter page dimensions,
+1536 px long-edge scaling, JPEG quality 80, filename/storage ownership, selected-page filtering and
+ordering, preview page limits, progress callbacks, cancellation cleanup, page-count behavior,
+PDF-authored colors or backgrounds, viewer motion, or attachment/LLM routing. A different PDF engine
+or dependency is not introduced without separate evidence of a rendering defect that remains after
+opaque-white initialization.
+
+## 13. Verification
+
+Focused verification must cover the exact onboarding spring constants, rest/pressed dimensions,
+motion-policy snap, unchanged action semantics, Generation Settings description, locale key/value
+parity for the Context and Thinking-segment labels, absence of the removed context-window wording,
+24 dp leading-icon parity across both chat-bottom dropdowns without resizing their triggers, absence
+of the Detailed token usage Appearance row and dead chat-side parameter threading, the Tool Blocks ->
+Thinking segment -> Auto-Expand Appearance row order with unchanged predicates, the normal-only
+0 dp gradient lead with unchanged 40 dp width and 20 dp expanded behavior, and scoped Settings-arrow
+absence with preserved category/Sandbox/Provider click destinations, Sandbox Switch, and custom
+protocol badge. PDF rasterization verification must cover one shared opaque-white bitmap initializer
+used by both render paths, initialization before every framework page render, and unchanged
+scaling/JPEG/page-selection/progress/cancellation behavior. Full-screen text-preview verification
+must cover current App-font inheritance in
+both Markdown and ordinary-text paths, exact 1.1 Markdown line-height scaling, explicit Bold H1-H6,
+unchanged Markdown font sizes, and the unchanged 13 sp / 20 sp ordinary-text metrics. It must also
+cover both shared full-screen transition hosts, the exact fade/scale durations and easings, Reduced
+Motion's fade-only fallback, last-payload retention, release only after settled exit, confirmed-video
+close waiting, immediate non-video handoff, and absence of a duplicate pager close delay. The
+project-defined full build gate remains required after final code or resource changes.

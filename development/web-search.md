@@ -69,17 +69,37 @@ No owner may infer the other capability from a matching company name or legacy s
   Search or Chat Completions, auto-disable the setting, or use a Snackbar-only error path.
 - Every OpenAI Responses `web_search_call` output item must appear in the ordinary message
   timeline as one `OpenAI Search` tool block.
-- Gemini candidate `groundingMetadata` must become one completed `Google Search` hosted-tool block.
-  Its durable result keeps the full grounding metadata and exposes normalized source `results` with
-  titles and URLs for the shared search-card presentation. It must not call `WebSearchToolProvider`
-  or reuse generic search settings.
+- Gemini candidate `groundingMetadata` must become one completed durable `google_search` hosted-tool
+  block. Its result keeps the full grounding metadata and normalized source `results`, but the exact
+  `google_search` segment is excluded at the shared UI presentation boundary: it renders no search
+  card and contributes nothing to `Called x tools`. It must not call `WebSearchToolProvider` or reuse
+  generic search settings. Generic `web_search`, OpenAI `openai_search`, Code Execution, and all other
+  tool segments remain visible.
 - Provider-hosted calls are display-only. They must never become a local `ToolCallRequest`, execute
   through `WebSearchToolProvider`, consume generic provider credentials, or start a tool
   continuation round.
 - The added/done events for one provider call must update the same stable block. Completed and
   failed provider statuses must settle that block terminally; Stop settles an incomplete block as
   stopped through the standard generation lifecycle.
-- Hosted search answer citations remain clickable answer content and do not replace the tool block.
+- Hosted search answer citations follow the complete lifecycle in
+  [citations.md](citations.md): structured Provider metadata is durable answer metadata and renders
+  as numbered answer/source references. Hiding Gemini's `google_search` presentation never removes,
+  replaces, or executes its durable hosted-tool block.
+- Visible generic and provider-hosted search results share one clean result-list presentation in the
+  tool detail sheet. Result title, snippet, and URL/source must form three unambiguous semantic tiers:
+  the 16 sp-equivalent SemiBold title is dominant, the 13 sp Normal snippet is subordinate, and the
+  11-12 sp URL/source is tertiary in primary color. Rows use deliberate internal spacing and subtle
+  separators rather than equal-weight filled cards. Presentation must preserve result order and the
+  existing title, URL, and snippet fallback data without changing search execution or settlement.
+  Every result whose URL passes the shared HTTP(S) citation-safety policy is one full-row activation
+  target. Its Material ripple is bounded and clipped to one 12 dp rounded rectangle, and
+  activation opens the safe URL through the Compose URI handler without haptics or a separate Intent
+  path. A missing or unsafe URL stays non-clickable. Only the Web Search result host reduces the
+  conventional sheet-side outer inset from 24 dp to 16 dp, so every card, divider, ripple, and
+  activation target extends 8 dp toward both screen edges. Title, snippet, and URL content stay on
+  the established 24 dp text line through an 8 dp alignment inset inside that expanded host, while
+  each row keeps 12 dp vertical padding. The rounded boundary must not add a fill or elevation,
+  change any other tool-detail inset, or replace the existing separator treatment.
 
 ## 6. Failure and security behavior
 

@@ -35,6 +35,19 @@ class StreamingMarkdownMessageSourceContractTest {
     }
 
     @Test
+    fun `finalized virtualized Thinking detail remains selectable without auto scroll`() {
+        val detail = source(locateMainSourceRoot(), "SegmentDetailSheet.kt")
+        val virtualizedDetail = detail
+            .substringAfter("val detailPageContent")
+            .substringAfter("if (usesVirtualizedSingleMarkdown)")
+            .substringBefore("} else {")
+
+        assertTrue(virtualizedDetail.contains("NoAutoScrollSelectionContainer("))
+        assertTrue(virtualizedDetail.contains("LazyMarkdownTextContent("))
+        assertTrue(detail.contains("selectionEnabled = !isStreaming"))
+    }
+
+    @Test
     fun `generation error bar is one stateless sibling rather than Markdown state`() {
         val root = locateMainSourceRoot()
         val wrapper = source(root, "StreamingMarkdownMessage.kt")
@@ -54,16 +67,40 @@ class StreamingMarkdownMessageSourceContractTest {
     fun `Compact detail uses real empty content and ordinary durable error state`() {
         val source = source(locateMainSourceRoot(), "MessageItem.kt")
 
-        assertTrue(source.contains("Context compacting..."))
+        assertTrue(source.contains("R.string.context_compact_streaming"))
         assertTrue(source.contains("directMarkdownContent = compactDetailText"))
         assertTrue(source.contains("errorText = detailErrorText"))
         assertFalse(source.contains("\\u200B"))
-        assertTrue(source.contains("Compact error"))
+        assertTrue(source.contains("R.string.context_compact_error"))
+        assertTrue(source.contains("R.string.context_compact_stopped"))
         assertTrue(source.contains("animateColorAsState("))
         assertTrue(source.contains("Icons.Default.Error"))
         assertTrue(source.contains("MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)"))
         assertTrue(source.contains("MaterialTheme.colorScheme.error.copy(alpha = 0.8f)"))
         assertFalse(source.contains("targetValue = if (error) {\n            MaterialTheme.colorScheme.errorContainer\n"))
+    }
+
+    @Test
+    fun `normal and incremental Markdown roots explicitly forward inline content`() {
+        val root = locateMainSourceRoot()
+        val normal = source(root, "MessageItemMarkdown.kt")
+        val incremental = source(root, "IncrementalStreamingMarkdown.kt")
+        val timeline = source(root, "MessageItemTimeline.kt")
+        val citation = source(root, "CitationMessageContent.kt")
+
+        listOf(normal, incremental).forEach { owner ->
+            assertTrue(owner.contains("val inlineContent = LocalMarkdownInlineContent.current"))
+            assertTrue(owner.contains("inlineContent = inlineContent,"))
+        }
+        assertEquals(
+            2,
+            Regex("isStreaming = answerIsStreaming").findAll(timeline).count(),
+        )
+        assertTrue(citation.contains("internal fun citationMarkdownProjection("))
+        assertFalse(citation.contains("terminalCitationMarkdownProjection"))
+        assertTrue(citation.contains("val unsupported by lazy(LazyThreadSafetyMode.NONE)"))
+        assertTrue(citation.contains("boundedTrailingCitationWrapperStart("))
+        assertFalse(citation.contains("answerText.lastIndexOf(\"([\")"))
     }
 
     @Test
