@@ -23,6 +23,7 @@ object SearchResultFormatter {
                 type == "execute_shell_command" ||
                 type == "list_shells" ||
                 type == "list_memory_files" ||
+                type == "list_skill_files" ||
                 type == "list_conversations" ||
                 type == "read_conversation"
         } catch (_: Exception) {
@@ -41,7 +42,7 @@ object SearchResultFormatter {
                 "search_conversations" -> formatConversationSearch(json, context)
                 "list_conversations" -> formatConversationList(json, context)
                 "read_conversation" -> formatConversationRead(json, context)
-                "list_memory_files" -> formatMemoryList(json)
+                "list_memory_files", "list_skill_files" -> formatMemoryList(json)
                 "list_shells" -> formatShellList(json, context)
                 "execute_shell_command" -> formatShellCommand(json, context)
                 else -> text
@@ -120,7 +121,9 @@ object SearchResultFormatter {
             "## $title\n$previews"
         }
 
-        val total = results.sumOf { (it.jsonObject["messages"]?.jsonArray?.size ?: 0) }
+        val total = results.sumOf { element ->
+            (element.jsonObject["match_count"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+        }
         return context.getString(R.string.search_found_matches, total, query) + "\n\n$body"
     }
 

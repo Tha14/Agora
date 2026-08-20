@@ -189,7 +189,9 @@ internal fun compactSegmentHasActiveContent(
         when (segment.type) {
             "tool" -> ToolPresentationResolver.resolve(segment).isActive
             "thought" -> useLiveStatus && message.status == MessageStatus.THINKING
-            "transcription" -> useLiveStatus && message.status == MessageStatus.TRANSCRIBING
+            "transcription" -> useLiveStatus &&
+                (message.status == MessageStatus.TRANSCRIBING ||
+                    message.status == MessageStatus.TOOL_CALLING)
             else -> false
         }
     }
@@ -580,8 +582,12 @@ internal fun CompactSegmentBlock(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                Text(
+                                StableStreamingText(
                                     text = toolSummary(seg),
+                                    streaming =
+                                        isStreaming &&
+                                            useLiveStatus &&
+                                            idx == segs.lastIndex,
                                     style = ChatType.metaNormal,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                     maxLines = 1,
@@ -911,8 +917,9 @@ internal fun TimelineInfoSegmentCard(
                         else -> ""
                     }
                     if (summary.isNotBlank()) {
-                        Text(
+                        StableStreamingText(
                             text = summary,
+                            streaming = isStreamingContent,
                             style = ChatType.metaNormal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             maxLines = 1,
@@ -958,16 +965,12 @@ private fun StreamingThoughtPreviewText(
     val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
     val flat = remember(content) { content.replace('\n', ' ') }
     val annotated = remember(flat) { AnnotatedString(flat) }
-    val faded = rememberStreamingGlyphFade(
-        content = annotated,
-        color = color,
-        enabled = streaming,
-    )
-    val preview = remember(faded, streaming) {
-        if (streaming) thoughtPreviewTail(faded) else faded
+    val preview = remember(annotated, streaming) {
+        if (streaming) thoughtPreviewTail(annotated) else annotated
     }
-    Text(
-        text = preview,
+    StableStreamingText(
+        text = preview.text,
+        streaming = streaming,
         style = ChatType.metaNormal,
         color = color,
         maxLines = 1,

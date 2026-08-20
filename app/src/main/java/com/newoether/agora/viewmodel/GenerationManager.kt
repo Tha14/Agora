@@ -6,6 +6,7 @@ import com.newoether.agora.api.LlmProvider
 import com.newoether.agora.api.StreamEvent
 import com.newoether.agora.data.CustomProviderConfig
 import com.newoether.agora.data.MemoryManager
+import com.newoether.agora.data.SkillManager
 import com.newoether.agora.data.replaceCustomProviderIdsForDisplay
 
 import com.newoether.agora.data.local.MessageEntity
@@ -35,6 +36,7 @@ class GenerationManager(
     private val app: Application,
     private val conversations: com.newoether.agora.data.repository.ConversationRepository,
     private val memoryManager: MemoryManager,
+    private val skillManager: SkillManager,
     private val context: android.content.Context,
     private val sandboxFactory: com.newoether.agora.sandbox.SandboxManagerFactory? = null,
     additionalToolProviders: List<ToolProvider> = emptyList(),
@@ -50,6 +52,7 @@ class GenerationManager(
         app = app,
         conversations = conversations,
         memoryManager = memoryManager,
+        skillManager = skillManager,
         sandboxFactory = sandboxFactory,
         additionalProviders = additionalToolProviders,
         confirmShellCommand = { server, summary ->
@@ -147,9 +150,9 @@ class GenerationManager(
         var parentId: String? = null
         var modelRunSequence = -1L
         var toolPath = emptyList<ChatMessage>()
-        val transcriptionExecution = GenerationTranscriptionStage(
-            TranscriptionManager(providerInstances, conversations, context),
-        ).newExecution()
+        val transcriptionManager = TranscriptionManager(providerInstances, conversations, context)
+        val transcriptionExecution =
+            GenerationTranscriptionStage(transcriptionManager).newExecution()
         val checkpoints = StreamingMessageCheckpoints(
             scope = CoroutineScope(currentCoroutineContext()),
             isLatestPersist = isLatestPersist,
@@ -232,18 +235,17 @@ class GenerationManager(
                     conversationId = conversationId,
                     config = config,
                     context = ctx,
-                    loadedMessages = loadedMessages,
+                    // The transcription stage has just persisted per-attachment metadata. Reload
+                    // that snapshot so only transcribed source images are removed; a global
+                    // image-disable would also discard fresh view_image results in later rounds.
+                    loadedMessages = loadedMessages.takeUnless { transcription.performed },
                 ),
             )
             requestTrace?.mark(
                 "api_path_ready",
                 "messages=${currentPath.size} tools=${rawProviderConfig.tools.orEmpty().size}",
             )
-            val providerConfig = if (transcription.performed) {
-                rawProviderConfig.copy(includeImages = false)
-            } else {
-                rawProviderConfig
-            }
+            val providerConfig = rawProviderConfig
 
             var toolCallData: ToolCallData? = null
             var toolCallDataList: List<ToolCallData> = emptyList()
@@ -345,6 +347,24 @@ class GenerationManager(
                         conversationId = conversationId,
                         authorizedToolNames = providerConfig.tools.orEmpty()
                             .mapTo(linkedSetOf()) { it.function.name },
+                        // view_image results reuse this generation's transcription flow when
+                        // image transcription is enabled for the current model.
+                        toolImageTranscriber =
+                            if (
+                                ctx.imageTranscriptionEnabled &&
+                                ctx.transcriptionModelId.isNotBlank()
+                            ) {
+                                { image, onProgress ->
+                                    transcriptionManager.describeImageWithProgress(
+                                        image = image,
+                                        ctx = ctx,
+                                        generationJob = generationJob,
+                                        onProgress = onProgress,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
                     ),
                     overlay = toolOverlay,
                     callbacks = ToolBatchProgressCallbacks(
@@ -395,6 +415,19 @@ class GenerationManager(
                         )
                     }
                     is StreamEvent.ThoughtChunk -> {
+                        val updatedCompletedThought = event.thought.isEmpty() &&
+                            currentStatus != MessageStatus.THINKING &&
+                            (event.title != null || event.signature != null) &&
+                            toolOverlay.updateLastThoughtMetadata(
+                                signature = event.signature,
+                                signatureProvider = provider.name.takeIf {
+                                    event.signature != null
+                                },
+                            )
+                        if (updatedCompletedThought) {
+                            if (event.title != null) totalThoughtTitle = event.title
+                            return
+                        }
                         flushAnswerSegment()
                         currentStatus = MessageStatus.THINKING
                         retryText = null

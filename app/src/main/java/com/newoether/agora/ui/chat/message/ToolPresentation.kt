@@ -18,6 +18,11 @@ internal enum class ToolKind {
     MEMORY_EDIT,
     MEMORY_DELETE,
     MEMORY_UPDATE_ACTIVE,
+    SKILL_LIST,
+    SKILL_READ,
+    SKILL_CREATE,
+    SKILL_EDIT,
+    SKILL_DELETE,
     WEB_SEARCH,
     WEB_FETCH,
     CONVERSATION_SEARCH,
@@ -27,6 +32,7 @@ internal enum class ToolKind {
     SHELL_EXECUTE,
     SHELL_JOB_LIST,
     SHELL_JOB_GET,
+    SHELL_JOB_WAIT,
     SHELL_JOB_STOP,
     FILE_READ,
     FILE_WRITE,
@@ -73,10 +79,14 @@ internal data class ToolPresentation(
     val jobId: String?,
     val outputLength: Int?,
 ) {
+    /**
+     * Drives the group loading indicator. BACKGROUND_RUNNING is deliberately excluded: a
+     * detached background shell job must not occupy the loading bar once its tool round ends —
+     * the card shows its own "running in background" status instead.
+     */
     val isActive: Boolean
         get() = state == ToolPresentationState.CALLING ||
-            state == ToolPresentationState.RUNNING ||
-            state == ToolPresentationState.BACKGROUND_RUNNING
+            state == ToolPresentationState.RUNNING
 }
 
 internal object ToolPresentationResolver {
@@ -110,6 +120,7 @@ internal object ToolPresentationResolver {
             exitCode != null &&
             exitCode != 0
         val count = semanticCount(kind, resultObject)
+            ?: tolerantSemanticCount(kind, segment.toolStructuredResult ?: segment.toolResult)
         val semanticEmpty = isSemanticEmpty(
             kind = kind,
             rawResult = segment.toolResult.orEmpty(),
@@ -172,7 +183,7 @@ internal object ToolPresentationResolver {
         envelope: JsonObject?,
     ): JsonObject? {
         if (envelope == null) return null
-        if (kind != ToolKind.SHELL_EXECUTE && kind != ToolKind.SHELL_JOB_GET) return envelope
+        if (kind != ToolKind.SHELL_EXECUTE && kind != ToolKind.SHELL_JOB_GET && kind != ToolKind.SHELL_JOB_WAIT) return envelope
         return envelope["result"] as? JsonObject ?: envelope
     }
 
@@ -183,6 +194,11 @@ internal object ToolPresentationResolver {
         "edit_memory_file" -> ToolKind.MEMORY_EDIT
         "delete_memory_file" -> ToolKind.MEMORY_DELETE
         "update_active_memory" -> ToolKind.MEMORY_UPDATE_ACTIVE
+        "list_skill_files" -> ToolKind.SKILL_LIST
+        "read_skill_file" -> ToolKind.SKILL_READ
+        "create_skill_file" -> ToolKind.SKILL_CREATE
+        "edit_skill_file" -> ToolKind.SKILL_EDIT
+        "delete_skill_file" -> ToolKind.SKILL_DELETE
         "web_search", "openai_search", "google_search" -> ToolKind.WEB_SEARCH
         "web_fetch" -> ToolKind.WEB_FETCH
         "search_conversations" -> ToolKind.CONVERSATION_SEARCH
@@ -192,7 +208,7 @@ internal object ToolPresentationResolver {
         "execute_shell_command" -> ToolKind.SHELL_EXECUTE
         "list_shell_jobs" -> ToolKind.SHELL_JOB_LIST
         "get_shell_job" -> ToolKind.SHELL_JOB_GET
-        "wait_for_job" -> ToolKind.SHELL_JOB_GET
+        "wait_for_job" -> ToolKind.SHELL_JOB_WAIT
         "stop_shell_job" -> ToolKind.SHELL_JOB_STOP
         "file_read" -> ToolKind.FILE_READ
         "file_write" -> ToolKind.FILE_WRITE
@@ -229,9 +245,11 @@ internal object ToolPresentationResolver {
     }
 
     private fun semanticCount(kind: ToolKind, result: JsonObject?): Int? = when (kind) {
-        ToolKind.MEMORY_LIST -> result.arraySize("files")
-        ToolKind.WEB_SEARCH,
-        ToolKind.CONVERSATION_SEARCH -> result.arraySize("results")
+        ToolKind.MEMORY_LIST,
+        ToolKind.SKILL_LIST -> result.arraySize("files")
+        ToolKind.WEB_SEARCH -> result.arraySize("results")
+        ToolKind.CONVERSATION_SEARCH -> result.int("count")
+            ?: result.arraySize("results")
         ToolKind.CONVERSATION_LIST -> result.int("total")
             ?: result.arraySize("conversations")
         ToolKind.SHELL_LIST -> result.arraySize("devices")
@@ -240,6 +258,23 @@ internal object ToolPresentationResolver {
         ToolKind.FILE_GREP -> result.arraySize("matches")
         ToolKind.TASK_LIST -> result.arraySize("tasks")
         else -> null
+    }
+
+    private fun tolerantSemanticCount(kind: ToolKind, rawResult: String?): Int? = when (kind) {
+        ToolKind.CONVERSATION_SEARCH -> tolerantConversationCount(rawResult)
+        else -> null
+    }
+
+    private fun tolerantConversationCount(rawResult: String?): Int? {
+        if (rawResult.isNullOrBlank()) return null
+        val document = StreamingJsonParser.parse(rawResult)
+        val root = document.root as? StreamingJsonObject ?: return null
+        val countEntry = root.entries.firstOrNull { it.key == "count" }
+        val countFromField = (countEntry?.value as? StreamingJsonScalar)?.content?.toIntOrNull()
+        if (countFromField != null) return countFromField
+        val resultsEntry = root.entries.firstOrNull { it.key == "results" }
+        val resultsArray = resultsEntry?.value as? StreamingJsonArray
+        return resultsArray?.values?.size
     }
 
     private fun isSemanticEmpty(
@@ -266,7 +301,11 @@ internal object ToolPresentationResolver {
         ToolKind.MEMORY_READ,
         ToolKind.MEMORY_CREATE,
         ToolKind.MEMORY_EDIT,
-        ToolKind.MEMORY_DELETE -> arguments.string("name")
+        ToolKind.MEMORY_DELETE,
+        ToolKind.SKILL_READ,
+        ToolKind.SKILL_CREATE,
+        ToolKind.SKILL_EDIT,
+        ToolKind.SKILL_DELETE -> arguments.string("name")
             ?: arguments.array("names")?.singleOrNull()?.primitiveContent()
         ToolKind.WEB_SEARCH,
         ToolKind.CONVERSATION_SEARCH -> arguments.string("query")
@@ -276,6 +315,7 @@ internal object ToolPresentationResolver {
         ToolKind.SHELL_EXECUTE -> arguments.string("command")
             ?: result.string("command")
         ToolKind.SHELL_JOB_GET,
+        ToolKind.SHELL_JOB_WAIT,
         ToolKind.SHELL_JOB_STOP -> arguments.string("job_id")
             ?: result.string("job_id")
         ToolKind.FILE_READ,

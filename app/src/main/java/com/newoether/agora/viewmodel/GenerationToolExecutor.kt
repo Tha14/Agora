@@ -3,6 +3,7 @@ package com.newoether.agora.viewmodel
 import android.app.Application
 import com.newoether.agora.api.ToolDefinition
 import com.newoether.agora.data.MemoryManager
+import com.newoether.agora.data.SkillManager
 import com.newoether.agora.data.local.MessageEntity
 import com.newoether.agora.data.repository.ConversationRepository
 import com.newoether.agora.model.RunEffectIdentity
@@ -11,6 +12,7 @@ import com.newoether.agora.model.ToolExecutionStates
 import com.newoether.agora.sandbox.SandboxManagerFactory
 import com.newoether.agora.tool.ImageGenToolProvider
 import com.newoether.agora.tool.MemoryToolProvider
+import com.newoether.agora.tool.SkillToolProvider
 import com.newoether.agora.tool.RagToolProvider
 import com.newoether.agora.tool.ShellToolProvider
 import com.newoether.agora.tool.ToolExecutionEvent
@@ -38,6 +40,8 @@ internal data class AuthorizedToolCall(
     val arguments: String,
     val context: GenerationContext,
     val authorizedToolNames: Set<String>,
+    /** Per-generation single-image transcription flow; null disables it. */
+    val toolImageTranscriber: (suspend (com.newoether.agora.model.ToolImageAttachment, suspend (String) -> Unit) -> String?)? = null,
 )
 
 internal data class AuthorizedToolResult(
@@ -76,6 +80,7 @@ internal class GenerationToolExecutor private constructor(
             app: Application,
             conversations: ConversationRepository,
             memoryManager: MemoryManager,
+            skillManager: SkillManager,
             sandboxFactory: SandboxManagerFactory?,
             additionalProviders: List<ToolProvider>,
             confirmShellCommand: suspend (server: String, summary: String) -> Boolean,
@@ -90,6 +95,7 @@ internal class GenerationToolExecutor private constructor(
             return GenerationToolExecutor(
                 providers = listOf(
                     MemoryToolProvider(memoryManager),
+                    SkillToolProvider(skillManager),
                     WebSearchToolProvider(),
                     RagToolProvider(conversations),
                     imageGenProvider,

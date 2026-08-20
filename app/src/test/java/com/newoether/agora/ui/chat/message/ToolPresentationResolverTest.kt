@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -183,7 +184,7 @@ class ToolPresentationResolverTest {
     }
 
     @Test
-    fun backgroundJobRemainsActiveAfterToolCallReturns() {
+    fun backgroundJobIsNotActiveAfterToolCallReturns() {
         val presentation = ToolPresentationResolver.resolve(
             MessageSegment(
                 type = "tool",
@@ -194,7 +195,8 @@ class ToolPresentationResolverTest {
 
         assertEquals(ToolPresentationState.BACKGROUND_RUNNING, presentation.state)
         assertEquals("abc", presentation.jobId)
-        assertTrue(presentation.isActive)
+        // A detached background job must not occupy the group loading indicator.
+        assertFalse(presentation.isActive)
     }
 
     @Test
@@ -473,7 +475,7 @@ class ToolPresentationResolverTest {
             ),
         )
 
-        assertEquals(ToolKind.SHELL_JOB_GET, running.kind)
+        assertEquals(ToolKind.SHELL_JOB_WAIT, running.kind)
         assertEquals(ToolPresentationState.RUNNING, running.state)
         assertEquals("streaming output", shellOutputText(running))
 
@@ -486,9 +488,38 @@ class ToolPresentationResolverTest {
             ),
         )
 
-        assertEquals(ToolKind.SHELL_JOB_GET, terminal.kind)
+        assertEquals(ToolKind.SHELL_JOB_WAIT, terminal.kind)
         assertEquals(ToolPresentationState.COMPLETED, terminal.state)
         assertEquals("done", shellOutputText(terminal))
         assertEquals("job-9", terminal.jobId)
+    }
+
+    @Test
+    fun truncatedConversationSearchResultUsesEmittedCount() {
+        val presentation = ToolPresentationResolver.resolve(
+            MessageSegment(
+                type = "tool",
+                toolName = "search_conversations",
+                toolArgs = """{"query":"x"}""",
+                toolResult = """{"type":"search_conversations","query":"x","count":3,"results":[{"title":"A","match_count":1,"messages":[]}""",
+                toolState = ToolExecutionStates.SUCCEEDED,
+            ),
+        )
+
+        assertEquals(3, presentation.count)
+        assertEquals(ToolPresentationState.COMPLETED, presentation.state)
+    }
+
+    @Test
+    fun truncatedConversationSearchWithoutCountCountsCompletedResults() {
+        val presentation = ToolPresentationResolver.resolve(
+            MessageSegment(
+                type = "tool",
+                toolName = "search_conversations",
+                toolResult = """{"type":"search_conversations","query":"x","results":[{"title":"A","match_count":1,"messages":[]},{"title":"B","match_count":1,"messages":[]}""",
+            ),
+        )
+
+        assertEquals(2, presentation.count)
     }
 }

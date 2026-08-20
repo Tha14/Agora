@@ -55,6 +55,8 @@ class SemanticSearchServiceTest {
                 accessSavedMemories = false,
                 accessActiveMemory = true,
                 accessPastConversations = false,
+                skillReadAccess = false,
+                skillModifyAccess = false,
                 modelSearchMethod = "semantic",
                 activeEmbeddingConfig = embedding,
                 embeddingApiKey = "embedding-key",

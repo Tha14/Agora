@@ -42,6 +42,96 @@ class ToolMessagesTest {
     }
 
     @Test
+    fun toolImageSurvivesTheCompleteProviderPreparationPipeline() {
+        val prepared = prepareMessages(
+            messages = projectToolResultImagesToUserMessage(
+                messages = listOf(
+                    normal("user", Participant.USER),
+                    tool("tool_round", "call-image"),
+                    result("result_image", "call-image").copy(
+                        images = listOf("/private/tool-result.png"),
+                    ),
+                ),
+                includeImages = true,
+            ),
+            contextTokenBudget = 16_384,
+        )
+
+        // The result_ row keeps its images in the prepared list (the projection trigger reads
+        // them there); the API-only image-context row is the one that must survive as a normal
+        // user message.
+        val visualTurn = prepared.single { it.id.startsWith("image_context_") }
+        assertEquals(Participant.USER, visualTurn.participant)
+        assertEquals(listOf("/private/tool-result.png"), visualTurn.images)
+    }
+
+    @Test
+    fun syntheticImageContextRow_usesNonProtocolIdAndSerializesAsNormalUserMessage() {
+        val projected = projectToolResultImagesToUserMessage(
+            messages = listOf(
+                tool("tool_round", "call-image"),
+                result("result_image", "call-image").copy(
+                    images = listOf("/private/tool-result.png"),
+                ),
+            ),
+            includeImages = true,
+        )
+
+        val visualTurn = projected.single { it.text.contains("Tool visual result") }
+        // The regression: this id used to start with "tool_", so every provider serializer
+        // routed it into the tool-protocol branch and silently dropped its text and images.
+        assertFalse(visualTurn.id.startsWith("tool_"))
+        assertFalse(visualTurn.id.startsWith("result_"))
+        assertFalse(visualTurn.id.startsWith("compact_"))
+        assertFalse(visualTurn.isToolProtocolMessage())
+        assertEquals(Participant.USER, visualTurn.participant)
+        assertEquals(listOf("/private/tool-result.png"), visualTurn.images)
+        assertEquals("result_image", visualTurn.parentId)
+
+        val wire = convertToOpenAiMessages(projected, includeImages = true)
+        val wireUser = wire.single { message ->
+            message.role == "user" &&
+                message.content?.any { part ->
+                    part.type == "text" && part.text?.contains("Tool visual result") == true
+                } == true
+        }
+        assertTrue(wireUser.content.orEmpty().any { it.text?.contains("Tool visual result") == true })
+    }
+
+    @Test
+    fun toolImageDescriptionReachesTheModelRowLikeRegularImageTranscriptions() {
+        // The description travels on the result row's tool segment — the round-boundary path
+        // rebuild excludes the model message, so nothing else survives.
+        val messages = listOf(
+            tool("tool_round", "call-image"),
+            result("result_image", "call-image").copy(
+                images = listOf("/private/tool-result.png"),
+                segments = listOf(
+                    toolResultSegment("call-image", "result").copy(
+                        toolTranscription = "A cat sitting.",
+                    ),
+                ),
+            ),
+        )
+
+        val visualTurn = projectToolResultImagesToUserMessage(
+            messages = messages,
+            includeImages = true,
+        ).single { it.id.startsWith("image_context_") }
+        assertTrue(visualTurn.text.contains("--- Image Transcription: view_image ---"))
+        assertTrue(visualTurn.text.contains("A cat sitting."))
+
+        // Non-vision models receive the description instead of the unavailable notice.
+        val textOnly = projectToolResultImagesToUserMessage(
+            messages = messages,
+            includeImages = false,
+        ).single { it.id.startsWith("image_context_") }
+        assertTrue(textOnly.images.isEmpty())
+        assertTrue(textOnly.text.contains("A cat sitting."))
+        assertFalse(textOnly.text.contains("does not support image input"))
+    }
+
+    @Test
     fun unsupportedModelGetsExplicitToolImageNoticeWithoutBinaryInput() {
         val projected = projectToolResultImagesToUserMessage(
             messages = listOf(

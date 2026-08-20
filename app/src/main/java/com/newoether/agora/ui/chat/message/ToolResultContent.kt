@@ -97,7 +97,8 @@ internal fun ToolDetailContent(
         }
     }
     if (presentation.kind == ToolKind.SHELL_EXECUTE ||
-        presentation.kind == ToolKind.SHELL_JOB_GET
+        presentation.kind == ToolKind.SHELL_JOB_GET ||
+        presentation.kind == ToolKind.SHELL_JOB_WAIT
     ) {
         Column(modifier = contentAlignmentModifier.fillMaxWidth()) {
             ShellResult(presentation)
@@ -144,8 +145,9 @@ internal fun ToolDetailContent(
                     TerminalOutput(presentation.liveOutput)
                 }
             }
-            ToolPresentationState.STOPPED -> ToolMutedContent(
-                stringResource(R.string.tool_execution_stopped),
+            ToolPresentationState.STOPPED -> GenerationTerminalText(
+                text = stringResource(R.string.tool_execution_stopped),
+                fillWidth = true,
             )
             ToolPresentationState.EMPTY,
             ToolPresentationState.COMPLETED -> ToolCompletedContent(presentation)
@@ -271,8 +273,9 @@ private fun ToolSectionLabel(text: String) {
 
 @Composable
 private fun ToolActiveContent(text: String, output: String?) {
-    Text(
+    StableStreamingText(
         text = text,
+        streaming = true,
         style = ChatType.metaNormal,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -284,20 +287,11 @@ private fun ToolActiveContent(text: String, output: String?) {
 
 @Composable
 private fun ToolErrorContent(message: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        NoAutoScrollSelectionContainer {
-            Text(
-                text = message,
-                style = ChatType.thoughtBody,
-                modifier = Modifier.padding(12.dp),
-            )
-        }
-    }
+    GenerationTerminalText(
+        text = message,
+        selectable = true,
+        fillWidth = true,
+    )
 }
 
 @Composable
@@ -494,8 +488,11 @@ private fun FileReadResult(presentation: ToolPresentation) {
     val path = result.string("path") ?: presentation.subject
     val lines = result.int("lines")
     if (path != null || lines != null) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            path?.let { MetaPill(it) }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            path?.let { MetaPill(it, modifier = Modifier.weight(1f, fill = false)) }
             lines?.let { MetaPill(stringResource(R.string.tool_line_count, it)) }
         }
         Spacer(Modifier.height(8.dp))
@@ -629,6 +626,7 @@ private fun TerminalOutput(output: String) {
 private fun MetaPill(
     text: String,
     emphasized: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val containerColor = if (emphasized) {
         MaterialTheme.colorScheme.primaryContainer
@@ -643,6 +641,7 @@ private fun MetaPill(
     Surface(
         shape = CircleShape,
         color = containerColor,
+        modifier = modifier,
     ) {
         Text(
             text = text,

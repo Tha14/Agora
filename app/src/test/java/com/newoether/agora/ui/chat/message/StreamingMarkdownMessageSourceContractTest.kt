@@ -19,7 +19,11 @@ class StreamingMarkdownMessageSourceContractTest {
         assertTrue(wrapper.contains("internal fun StreamingMarkdownMessage("))
         assertTrue(wrapper.contains("IncrementalStreamingMarkdownContent("))
         assertFalse(wrapper.contains("showStreamingIndicator"))
-        assertTrue(incremental.contains("LocalStreamingGlyphFadeSpec provides StreamingGlyphFadeSpec("))
+        assertTrue(incremental.contains("computeBlockFadeSpecs("))
+        assertEquals(
+            2,
+            Regex("LocalStreamingGlyphFadeSpec provides ").findAll(incremental).count(),
+        )
         assertFalse(incremental.contains("takeIf { showStreamingIndicator }"))
         assertTrue(wrapper.contains("emptyStreamingTextStyle: TextStyle"))
         assertTrue(wrapper.contains("AnimatedVisibility("))
@@ -59,7 +63,8 @@ class StreamingMarkdownMessageSourceContractTest {
         assertFalse(errorBar.contains("mutableState"))
         assertFalse(errorBar.contains("MessageStatus"))
         assertFalse(wrapper.contains("GenerationErrorBar"))
-        assertTrue(assistant.contains("GenerationErrorBar(errorContent.errorText)"))
+        assertTrue(assistant.contains("GenerationErrorBar("))
+        assertTrue(assistant.contains("precededByCard = terminalImmediatelyFollowsCard"))
         assertTrue(detail.contains("GenerationErrorBar(it)"))
     }
 
